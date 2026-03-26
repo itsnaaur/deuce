@@ -1,0 +1,345 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --shell: #050b14;
+  --shell-mid: #0a1628;
+  --shell-line: rgba(255, 255, 255, 0.08);
+  --canvas: #fafbff;
+  --canvas-dot: rgba(10, 22, 40, 0.055);
+  --surface: #ffffff;
+  --surface-2: #f3f6fb;
+  --text: #0a1628;
+  --text-2: #3d4f66;
+  --text-muted: #6b7c90;
+  --border: rgba(10, 22, 40, 0.08);
+  --accent-on-dark: #f8fafc;
+  --accent-on-light: #0c2340;
+  --accent-on-light-hover: #152f52;
+  --court-a: #145236;
+  --court-b: #1f7a52;
+  --court-line: rgba(255, 255, 255, 0.92);
+  --danger: #c41e3a;
+  --danger-bg: rgba(196, 30, 58, 0.08);
+  --shadow-soft: 0 4px 32px rgba(5, 11, 20, 0.06);
+  --shadow-lift: 0 24px 64px rgba(5, 11, 20, 0.12);
+  --glass-overlay: color-mix(in oklab, #050b14 44%, transparent);
+  --glass-surface: color-mix(in oklab, var(--surface) 78%, transparent);
+  --glass-border: color-mix(in oklab, var(--accent-on-light) 18%, white 82%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Next.js: pair with data-scroll-behavior on <html> so route transitions can disable smooth scroll */
+html[data-scroll-behavior="smooth"] {
+  scroll-behavior: smooth;
+}
+
+html {
+  background: var(--canvas);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Main canvas: light area with subtle dot grid */
+.deuce-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 100vh;
+  background-color: var(--canvas);
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* Sidebar: deep navy */
+.deuce-shell {
+  background: linear-gradient(180deg, var(--shell-mid) 0%, var(--shell) 55%);
+  border-right: 1px solid var(--shell-line);
+}
+
+.shell-input {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--accent-on-dark);
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.shell-input::placeholder {
+  color: rgba(248, 250, 252, 0.35);
+}
+.shell-input:focus {
+  border-color: rgba(248, 250, 252, 0.35);
+  box-shadow: 0 0 0 3px rgba(248, 250, 252, 0.08);
+}
+
+.shell-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.45);
+}
+
+.btn-shell-primary {
+  background: var(--accent-on-dark);
+  color: var(--shell);
+  font-weight: 600;
+  border-radius: 9999px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+}
+.btn-shell-primary:hover:not(:disabled) {
+  background: #fff;
+  transform: translateY(-1px);
+}
+.btn-shell-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.btn-shell-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-shell-ghost {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(248, 250, 252, 0.9);
+  background: transparent;
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-shell-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.btn-shell-ghost:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Light canvas forms — Queue page, shared with other light screens */
+.canvas-input {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.canvas-input::placeholder {
+  color: var(--text-muted);
+}
+.canvas-input:focus {
+  border-color: rgba(12, 35, 64, 0.35);
+  box-shadow: 0 0 0 3px rgba(12, 35, 64, 0.08);
+}
+
+.canvas-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.btn-canvas-primary {
+  background: var(--accent-on-light);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 9999px;
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 4px 20px rgba(12, 35, 64, 0.2);
+}
+.btn-canvas-primary:hover:not(:disabled) {
+  background: var(--accent-on-light-hover);
+  transform: translateY(-1px);
+}
+.btn-canvas-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-canvas-ghost {
+  border: 1px solid var(--border);
+  color: var(--accent-on-light);
+  background: var(--surface);
+  border-radius: 9999px;
+  font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-canvas-ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: rgba(12, 35, 64, 0.2);
+}
+.btn-canvas-ghost:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pill-toggle {
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.25rem 0.65rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.pill-toggle-on {
+  background: rgba(12, 35, 64, 0.1);
+  color: var(--accent-on-light);
+}
+.pill-toggle-off {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.pill-dark {
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 0.25rem 0.65rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pill-on {
+  background: rgba(248, 250, 252, 0.12);
+  color: rgba(248, 250, 252, 0.95);
+}
+.pill-off {
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(248, 250, 252, 0.45);
+}
+
+/* Court area cards (light) */
+.card-elevated {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  box-shadow: var(--shadow-soft);
+}
+
+.btn-court-primary {
+  background: var(--accent-on-light);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 0.875rem;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.btn-court-primary:hover:not(:disabled) {
+  background: var(--accent-on-light-hover);
+}
+.btn-court-primary:active:not(:disabled) {
+  transform: scale(0.99);
+}
+.btn-court-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-court-end {
+  background: #fff;
+  color: var(--danger);
+  border: 1px solid rgba(196, 30, 58, 0.35);
+  font-weight: 600;
+  border-radius: 0.875rem;
+  transition: background 0.15s ease;
+}
+.btn-court-end:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+.btn-court-end:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Shared page rhythm across mobile/tablet/desktop */
+.page-shell {
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+  padding-top: 2.5rem;
+  padding-bottom: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .page-shell {
+    max-width: 76rem;
+    padding-inline: 2rem;
+    padding-top: 3rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .page-shell {
+    padding-inline: 2.5rem;
+    padding-top: 3.25rem;
+    padding-bottom: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page-shell {
+    max-width: 88rem;
+    padding-inline: 3rem;
+    padding-top: 3.5rem;
+  }
+}
+
+@media (min-width: 1536px) {
+  .page-shell {
+    margin-inline: 0;
+    max-width: none;
+    padding-inline: 2.5rem;
+    padding-top: 2.75rem;
+    padding-bottom: 3rem;
+  }
+}
+
+.page-header {
+  margin-bottom: 2.25rem;
+  max-width: 56rem;
+  margin-inline: auto;
+}
+
+.page-logo {
+  height: 2.25rem;
+  width: auto;
+  object-fit: contain;
+}
+
+@media (min-width: 768px) {
+  .page-logo {
+    height: 2.6rem;
+  }
+}
+
+.page-kicker {
+  margin-top: 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--text-muted);
+}
+
+.page-title {
+  margin-top: 0.35rem;
+  color: var(--accent-on-light);
+}
