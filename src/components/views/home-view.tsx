@@ -2,9 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useState } from "react";
+import { StartSessionModal } from "@/components/session/start-session-modal";
 import { useDeuceSession } from "@/hooks/use-deuce-session";
 
 export function HomeView() {
+  const [showStartSessionPrompt, setShowStartSessionPrompt] = useState(false);
   const {
     players,
     waitingPlayers,
@@ -33,10 +36,7 @@ export function HomeView() {
       void startSession();
       return;
     }
-    const clearPlayers = window.confirm(
-      "Clear the current list of players before starting the new session?",
-    );
-    void startSession({ clearPlayers });
+    setShowStartSessionPrompt(true);
   };
 
   return (
@@ -204,6 +204,19 @@ export function HomeView() {
           </Link>
         </div>
       </div>
+      <StartSessionModal
+        open={showStartSessionPrompt}
+        playerCount={players.length}
+        onClose={() => setShowStartSessionPrompt(false)}
+        onKeepPlayers={() => {
+          setShowStartSessionPrompt(false);
+          void startSession({ clearPlayers: false });
+        }}
+        onClearPlayers={() => {
+          setShowStartSessionPrompt(false);
+          void startSession({ clearPlayers: true });
+        }}
+      />
     </div>
   );
 }

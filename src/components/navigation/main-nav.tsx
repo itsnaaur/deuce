@@ -163,32 +163,26 @@ export function AppSidebarNav({
       }`}
       aria-label="Main"
     >
-      <div className={`shrink-0 pb-4 ${collapsed ? "flex justify-center px-1 pt-1" : "flex flex-col items-center px-4 pb-2 pt-1"}`}>
-        {collapsed ? (
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white p-1 shadow-[0_4px_14px_rgba(5,11,20,0.25)] ring-1 ring-white/70">
-            <Image
-              src="/branding/deuce-icon-logo.png"
-              alt="Deuce icon logo"
-              width={28}
-              height={28}
-              className="h-7 w-7 object-contain"
-              priority
-            />
-          </span>
-        ) : (
-          <>
-            <span className="mt-1 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white p-1 shadow-[0_4px_14px_rgba(5,11,20,0.25)] ring-1 ring-white/70">
-              <Image
-                src="/branding/deuce-icon-logo.png"
-                alt="Deuce icon logo"
-                width={34}
-                height={34}
-                className="h-8 w-8 object-contain"
-                priority
-              />
-            </span>
-          </>
-        )}
+      <div className={`shrink-0 pb-4 ${collapsed ? "flex justify-center px-1 pt-1" : "flex justify-center px-4 pb-2 pt-1"}`}>
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`inline-flex items-center justify-center rounded-xl bg-white p-1 shadow-[0_4px_14px_rgba(5,11,20,0.25)] ring-1 ring-white/70 transition hover:scale-[1.02] ${
+            collapsed ? "h-10 w-10" : "mt-1 h-12 w-12"
+          }`}
+          title={collapsed ? "Expand menu" : "Collapse menu"}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <Image
+            src="/branding/deuce-icon-logo.png"
+            alt="Deuce icon logo"
+            width={collapsed ? 28 : 34}
+            height={collapsed ? 28 : 34}
+            className={collapsed ? "h-7 w-7 object-contain" : "h-8 w-8 object-contain"}
+            priority
+          />
+        </button>
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-2">
         {tabs.map((tab) => {
@@ -216,25 +210,15 @@ export function AppSidebarNav({
         })}
       </nav>
       <div className="mt-auto border-t border-white/10 p-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-xs font-semibold text-white/70 transition hover:bg-white/8 hover:text-white"
-          title={collapsed ? "Expand menu" : "Collapse menu"}
-          aria-expanded={!collapsed}
-        >
-          <span className="sr-only">{collapsed ? "Expand sidebar" : "Collapse sidebar"}</span>
-          <svg
-            className={`h-5 w-5 transition-transform ${collapsed ? "rotate-180" : ""}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-          </svg>
-          {!collapsed && <span className="hidden lg:inline">Collapse</span>}
-        </button>
+        <div className="flex w-full items-center justify-center py-2">
+          <Image
+            src="/branding/branding-signature.png"
+            alt="Brand signature"
+            width={collapsed ? 24 : 44}
+            height={collapsed ? 24 : 44}
+            className={`${collapsed ? "h-6 w-6" : "h-11 w-11"} rounded-md object-contain opacity-80`}
+          />
+        </div>
       </div>
     </aside>
   );

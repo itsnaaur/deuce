@@ -60,6 +60,15 @@ export function useDeuceSession() {
 
   useEffect(() => {
     const initialize = async () => {
+      // Ask for persistent storage when supported to reduce iOS/browser data eviction risk.
+      if (typeof navigator !== "undefined" && navigator.storage?.persist) {
+        try {
+          await navigator.storage.persist();
+        } catch {
+          // Storage persistence is best-effort; continue even if denied/unsupported.
+        }
+      }
+
       const currentSettings = await db.settings.get("default");
       if (!currentSettings) {
         await db.settings.put(DEFAULT_SETTINGS);

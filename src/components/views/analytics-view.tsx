@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDeuceSession } from "@/hooks/use-deuce-session";
 import type { SessionMatch } from "@/lib/types";
 
@@ -15,6 +15,8 @@ const formatDuration = (durationMs: number) => {
 export function AnalyticsView() {
   const { players, sessions, activeSession, sessionMatches, playerById } = useDeuceSession();
   const [selectedSessionId, setSelectedSessionId] = useState<string>("active");
+  const [visibleLeaderboardCount, setVisibleLeaderboardCount] = useState(3);
+  const [visibleHistoryCount, setVisibleHistoryCount] = useState(10);
   const resolvedSessionId =
     selectedSessionId === "active" ? (activeSession?.id ?? "all") : selectedSessionId;
 
@@ -64,6 +66,11 @@ export function AnalyticsView() {
       ? "All sessions"
       : sessions.find((session) => session.id === resolvedSessionId)?.name ?? "Selected session";
 
+  useEffect(() => {
+    setVisibleLeaderboardCount(3);
+    setVisibleHistoryCount(10);
+  }, [resolvedSessionId]);
+
   return (
     <div className="deuce-canvas relative flex min-h-full flex-1 flex-col">
       <div className="page-shell pb-24 2xl:pb-12">
@@ -88,7 +95,7 @@ export function AnalyticsView() {
           <div className="mt-4 flex max-w-sm flex-col gap-1">
             <label className="text-xs font-semibold uppercase tracking-[0.14em] text-(--text-muted)">Session</label>
             <select
-              className="canvas-input"
+              className="canvas-input app-select"
               value={selectedSessionId}
               onChange={(e) => setSelectedSessionId(e.target.value)}
             >
@@ -111,24 +118,45 @@ export function AnalyticsView() {
                 No ranked players yet for {selectedSessionName.toLowerCase()}.
               </p>
             ) : (
-              leaderboard.map((row, index) => (
-                <div
-                  key={row.player.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-(--border) bg-(--surface) px-4 py-3 shadow-(--shadow-soft)"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-(--text)">
-                      #{index + 1} {row.player.name}
-                    </p>
-                    <p className="text-xs text-(--text-2)">
-                      {row.wins}W / {row.losses}L / {row.draws}D ({row.matches} matches)
-                    </p>
+              leaderboard.slice(0, visibleLeaderboardCount).map((row, index) => {
+                const rank = index + 1;
+                const podiumClass =
+                  rank === 1
+                    ? "border-amber-300/70 bg-amber-50/60"
+                    : rank === 2
+                      ? "border-slate-300/80 bg-slate-50/80"
+                      : rank === 3
+                        ? "border-orange-300/70 bg-orange-50/60"
+                        : "border-(--border) bg-(--surface)";
+                const rankLabel = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
+                return (
+                  <div
+                    key={row.player.id}
+                    className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 shadow-(--shadow-soft) ${podiumClass}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-(--text)">
+                        {rankLabel} {row.player.name}
+                      </p>
+                      <p className="text-xs text-(--text-2)">
+                        {row.wins}W / {row.losses}L / {row.draws}D ({row.matches} matches)
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm font-bold tabular-nums text-(--accent-on-light)">
+                      {row.winRate}%
+                    </span>
                   </div>
-                  <span className="shrink-0 text-sm font-bold tabular-nums text-(--accent-on-light)">
-                    {row.winRate}%
-                  </span>
-                </div>
-              ))
+                );
+              })
+            )}
+            {leaderboard.length > visibleLeaderboardCount && (
+              <button
+                type="button"
+                className="btn-canvas-ghost mt-2 w-full px-4 py-2.5 text-sm"
+                onClick={() => setVisibleLeaderboardCount((current) => current + 10)}
+              >
+                View more leaderboard ({leaderboard.length - visibleLeaderboardCount} remaining)
+              </button>
             )}
           </div>
         </section>
@@ -141,7 +169,7 @@ export function AnalyticsView() {
                 No match records yet.
               </p>
             ) : (
-              filteredMatches.map((match: SessionMatch) => {
+              filteredMatches.slice(0, visibleHistoryCount).map((match: SessionMatch) => {
                 const teamA = match.teamAPlayerIds.map((id) => playerById.get(id)?.name ?? "Unknown").join(" / ");
                 const teamB = match.teamBPlayerIds.map((id) => playerById.get(id)?.name ?? "Unknown").join(" / ");
                 return (
@@ -159,6 +187,15 @@ export function AnalyticsView() {
                   </div>
                 );
               })
+            )}
+            {filteredMatches.length > visibleHistoryCount && (
+              <button
+                type="button"
+                className="btn-canvas-ghost mt-2 w-full px-4 py-2.5 text-sm"
+                onClick={() => setVisibleHistoryCount((current) => current + 10)}
+              >
+                View more history ({filteredMatches.length - visibleHistoryCount} remaining)
+              </button>
             )}
           </div>
         </section>

@@ -1,11 +1,14 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import { QueuePanel } from "@/components/queue/queue-panel";
 import { DEUCE_GENDERS, useDeuceSession } from "@/hooks/use-deuce-session";
 import type { Gender, SkillLevel } from "@/lib/types";
 
 export function QueueView() {
+  const [courtCountInput, setCourtCountInput] = useState("2");
+  const [visibleRosterCount, setVisibleRosterCount] = useState(10);
   const {
     name,
     setName,
@@ -27,6 +30,26 @@ export function QueueView() {
     toggleBreak,
   } = useDeuceSession();
 
+  useEffect(() => {
+    setCourtCountInput(String(settings?.courtCount ?? 2));
+  }, [settings?.courtCount]);
+
+  useEffect(() => {
+    setVisibleRosterCount(10);
+  }, [players.length]);
+
+  const commitCourtCount = () => {
+    const parsed = Number.parseInt(courtCountInput, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setCourtCountInput(String(settings?.courtCount ?? 2));
+      return;
+    }
+    const normalized = Math.min(parsed, 99);
+    setCourtCountInput(String(normalized));
+    void updateSettings({ courtCount: normalized });
+    void syncCourtsCount(normalized);
+  };
+
   return (
     <div className="deuce-canvas relative flex min-h-full flex-1 flex-col">
       <div className="page-shell">
@@ -46,7 +69,7 @@ export function QueueView() {
             <h1 className="page-title font-display text-4xl font-bold tracking-tight md:text-5xl 2xl:text-4xl">
               Manage players
             </h1>
-            <p className="mt-3 max-w-2xl text-base leading-relaxed text-(--text-2) md:text-lg 2xl:max-w-none 2xl:text-base">
+            <p className="mx-auto mt-3 max-w-2xl text-center text-base leading-relaxed text-(--text-2) md:text-lg 2xl:max-w-none 2xl:text-base">
               Add players, toggle availability, and watch the fair queue reorder live.
             </p>
           </div>
@@ -56,7 +79,7 @@ export function QueueView() {
               <span className="canvas-label">Skill mode</span>
               <select
                 value={skillMode}
-                className="canvas-input min-w-36"
+                className="canvas-input app-select min-w-36"
                 onChange={(e) =>
                   void updateSettings({ skillMode: e.target.value as "recreational" | "competitive" })
                 }
@@ -68,15 +91,22 @@ export function QueueView() {
             <label className="flex flex-col gap-1.5">
               <span className="canvas-label">Courts</span>
               <input
-                className="canvas-input w-20 text-center tabular-nums"
-                type="number"
-                min={1}
-                max={10}
-                value={settings?.courtCount ?? 2}
+                className="canvas-input number-input-clean w-24 text-center tabular-nums md:w-28"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={courtCountInput}
                 onChange={(e) => {
-                  const count = Math.max(1, Math.min(10, Number(e.target.value) || 1));
-                  void updateSettings({ courtCount: count });
-                  void syncCourtsCount(count);
+                  const next = e.target.value;
+                  if (/^\d*$/.test(next)) {
+                    setCourtCountInput(next);
+                  }
+                }}
+                onBlur={commitCourtCount}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    commitCourtCount();
+                  }
                 }}
               />
             </label>
@@ -106,7 +136,7 @@ export function QueueView() {
             />
             <div className="grid grid-cols-2 gap-3">
               <select
-                className="canvas-input w-full"
+                className="canvas-input app-select w-full"
                 value={gender}
                 onChange={(e) => setGender(e.target.value as Gender)}
               >
@@ -117,7 +147,7 @@ export function QueueView() {
                 ))}
               </select>
               <select
-                className="canvas-input w-full"
+                className="canvas-input app-select w-full"
                 value={selectedSkillLevel}
                 onChange={(e) => setSkillLevel(e.target.value as SkillLevel)}
               >
@@ -141,7 +171,7 @@ export function QueueView() {
             {players.length === 0 ? (
               <p className="py-8 text-center text-sm text-(--text-muted)">No players yet.</p>
             ) : (
-              players.map((player) => (
+              players.slice(0, visibleRosterCount).map((player) => (
                 <div
                   key={player.id}
                   className="flex flex-col gap-3 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-(--shadow-soft) sm:flex-row sm:items-center sm:justify-between"
@@ -175,11 +205,20 @@ export function QueueView() {
                 </div>
               ))
             )}
+            {players.length > visibleRosterCount && (
+              <button
+                type="button"
+                className="btn-canvas-ghost mt-2 w-full px-4 py-2.5 text-sm"
+                onClick={() => setVisibleRosterCount((current) => current + 10)}
+              >
+                View more roster ({players.length - visibleRosterCount} remaining)
+              </button>
+            )}
           </div>
         </section>
 
         <section className="py-8 md:py-10">
-          <QueuePanel waitingPlayers={waitingPlayers} title="Waiting" />
+          <QueuePanel waitingPlayers={waitingPlayers} title="Waiting" initialVisibleCount={10} visibleStep={10} />
         </section>
       </div>
     </div>

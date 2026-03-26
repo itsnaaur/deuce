@@ -152,6 +152,53 @@ body {
   box-shadow: 0 0 0 3px rgba(12, 35, 64, 0.08);
 }
 
+/* Responsive select controls for mobile/tablet/desktop */
+.app-select {
+  appearance: none;
+  min-height: 2.75rem;
+  padding-right: 2.25rem;
+  line-height: 1.25;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1rem) calc(50% - 0.12rem),
+    calc(100% - 0.72rem) calc(50% - 0.12rem);
+  background-size: 0.38rem 0.38rem, 0.38rem 0.38rem;
+  background-repeat: no-repeat;
+}
+
+@media (min-width: 768px) {
+  .app-select {
+    min-height: 3rem;
+    font-size: 0.95rem;
+  }
+}
+
+.court-select {
+  appearance: none;
+  min-height: 2rem;
+  padding-right: 1.5rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(10, 22, 40, 0.6) 50%),
+    linear-gradient(135deg, rgba(10, 22, 40, 0.6) 50%, transparent 50%);
+  background-position:
+    calc(100% - 0.72rem) calc(50% - 0.08rem),
+    calc(100% - 0.48rem) calc(50% - 0.08rem);
+  background-size: 0.3rem 0.3rem, 0.3rem 0.3rem;
+  background-repeat: no-repeat;
+}
+
+/* Remove browser number spinners for custom numeric inputs */
+.number-input-clean {
+  appearance: textfield;
+}
+.number-input-clean::-webkit-outer-spin-button,
+.number-input-clean::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .canvas-label {
   font-size: 0.625rem;
   font-weight: 600;

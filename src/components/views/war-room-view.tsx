@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { BadmintonCourtView } from "@/components/badminton-court";
 import { QueueDrawer } from "@/components/queue/queue-drawer";
 import { LiveSidePanel } from "@/components/session/live-side-panel";
+import { StartSessionModal } from "@/components/session/start-session-modal";
 import { useDeuceSession } from "@/hooks/use-deuce-session";
 import { MAX_TEAM_POWER_GAP, getBestBalancedTeams, getPriorityScore, getWaitMinutes } from "@/lib/queue";
 import type { Court, Player } from "@/lib/types";
@@ -113,6 +114,7 @@ export function WarRoomView() {
   const [scoreA, setScoreA] = useState("21");
   const [scoreB, setScoreB] = useState("18");
   const [autoFillError, setAutoFillError] = useState<string | null>(null);
+  const [showStartSessionPrompt, setShowStartSessionPrompt] = useState(false);
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
 
   const {
@@ -201,10 +203,7 @@ export function WarRoomView() {
       void startSession();
       return;
     }
-    const clearPlayers = window.confirm(
-      "Clear the current list of players before starting the new session?",
-    );
-    void startSession({ clearPlayers });
+    setShowStartSessionPrompt(true);
   };
 
   useEffect(() => {
@@ -286,7 +285,7 @@ export function WarRoomView() {
               </p>
             </div>
             {!activeSession ? (
-              <div className="mt-3 rounded-xl border border-dashed border-(--border) bg-(--surface) px-3 py-2 text-xs text-(--text-2)">
+              <div className="mt-3 rounded-xl border border-dashed border-(--border) bg-(--surface) px-3 py-2 text-center text-xs text-(--text-2)">
                 Start a session from Dashboard before starting matches.
               </div>
             ) : null}
@@ -541,6 +540,19 @@ export function WarRoomView() {
           </div>
         </div>
       ) : null}
+      <StartSessionModal
+        open={showStartSessionPrompt}
+        playerCount={players.length}
+        onClose={() => setShowStartSessionPrompt(false)}
+        onKeepPlayers={() => {
+          setShowStartSessionPrompt(false);
+          void startSession({ clearPlayers: false });
+        }}
+        onClearPlayers={() => {
+          setShowStartSessionPrompt(false);
+          void startSession({ clearPlayers: true });
+        }}
+      />
       </div>
     </LayoutGroup>
   );

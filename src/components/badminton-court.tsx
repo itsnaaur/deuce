@@ -379,7 +379,7 @@ function TeamMemberSlot({
   return (
     <select
       disabled={disabled}
-      className={`w-full rounded-md border border-white/30 bg-white px-1.5 py-1.5 font-medium text-(--text) outline-none ring-offset-2 focus:ring-2 focus:ring-(--accent-on-light) disabled:cursor-not-allowed disabled:opacity-50 md:px-2 ${large ? "text-[10px] sm:text-xs md:text-sm" : "text-xs"}`}
+      className={`court-select w-full rounded-md border border-white/30 bg-white px-1.5 py-1.5 font-medium text-(--text) outline-none ring-offset-2 focus:ring-2 focus:ring-(--accent-on-light) disabled:cursor-not-allowed disabled:opacity-50 md:px-2 ${large ? "text-[10px] sm:text-xs md:text-sm" : "text-xs"}`}
       value=""
       onChange={(e) => {
         if (e.target.value) onAssign(e.target.value, position);

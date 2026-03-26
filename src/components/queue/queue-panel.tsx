@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Player } from "@/lib/types";
 import { getWaitMinutes } from "@/lib/queue";
@@ -9,6 +10,8 @@ type QueuePanelProps = {
   className?: string;
   title?: string;
   subtitle?: string;
+  initialVisibleCount?: number;
+  visibleStep?: number;
 };
 
 export function QueuePanel({
@@ -16,14 +19,23 @@ export function QueuePanel({
   className = "",
   title = "Next up",
   subtitle = "Fair queue — fewest games, then longest wait.",
+  initialVisibleCount = 12,
+  visibleStep = 12,
 }: QueuePanelProps) {
+  const [visibleCount, setVisibleCount] = useState(initialVisibleCount);
+  const visiblePlayers = waitingPlayers.slice(0, visibleCount);
+
+  useEffect(() => {
+    setVisibleCount(initialVisibleCount);
+  }, [initialVisibleCount, waitingPlayers.length]);
+
   return (
     <div className={className}>
       <h2 className="font-display text-lg font-semibold text-(--accent-on-light) md:text-xl">{title}</h2>
       <p className="mt-2 text-sm text-(--text-2) md:text-base">{subtitle}</p>
       <div className="mt-4 space-y-2">
         <AnimatePresence mode="popLayout">
-          {waitingPlayers.map((player) => {
+          {visiblePlayers.map((player) => {
             const waitMinutes = getWaitMinutes(player.waitStartedAt);
             const isLongWait = waitMinutes > 20;
             return (
@@ -64,6 +76,15 @@ export function QueuePanel({
         </AnimatePresence>
         {waitingPlayers.length === 0 && (
           <p className="py-6 text-center text-sm text-(--text-muted)">Nobody waiting.</p>
+        )}
+        {waitingPlayers.length > visibleCount && (
+          <button
+            type="button"
+            className="btn-canvas-ghost mt-2 w-full px-4 py-2.5 text-sm"
+            onClick={() => setVisibleCount((current) => current + visibleStep)}
+          >
+            View more ({waitingPlayers.length - visibleCount} remaining)
+          </button>
         )}
       </div>
     </div>
