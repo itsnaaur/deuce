@@ -2,12 +2,19 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StartSessionModal } from "@/components/session/start-session-modal";
 import { useDeuceSession } from "@/hooks/use-deuce-session";
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
 export function HomeView() {
   const [showStartSessionPrompt, setShowStartSessionPrompt] = useState(false);
+  const [showIosInstallHelp, setShowIosInstallHelp] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const {
     players,
     waitingPlayers,
@@ -37,6 +44,36 @@ export function HomeView() {
       return;
     }
     setShowStartSessionPrompt(true);
+  };
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredInstallPrompt) {
+      await deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      setDeferredInstallPrompt(null);
+      return;
+    }
+
+    const ua = window.navigator.userAgent.toLowerCase();
+    const isIOS = /iphone|ipad|ipod/.test(ua);
+    const isStandalone =
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (isIOS && !isStandalone) {
+      setShowIosInstallHelp(true);
+    }
   };
 
   return (
@@ -204,6 +241,17 @@ export function HomeView() {
           </Link>
         </div>
       </div>
+      <button
+        type="button"
+        onClick={() => void handleInstallClick()}
+        className="fixed bottom-[calc(5.7rem+env(safe-area-inset-bottom))] right-4 z-50 inline-flex h-11 w-11 items-center justify-center rounded-full border border-(--border) bg-(--surface) text-(--accent-on-light) shadow-(--shadow-soft) transition hover:bg-(--surface-2) md:bottom-6 md:right-6 md:h-12 md:w-12 2xl:hidden"
+        aria-label="Install app"
+        title="Install app"
+      >
+        <svg className="h-5 w-5 md:h-6 md:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v1.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V17" />
+        </svg>
+      </button>
       <StartSessionModal
         open={showStartSessionPrompt}
         playerCount={players.length}
@@ -217,6 +265,24 @@ export function HomeView() {
           void startSession({ clearPlayers: true });
         }}
       />
+      {showIosInstallHelp ? (
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-(--border) bg-(--surface) p-5 shadow-(--shadow-lift)">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-(--text-muted)">Install on iPhone</p>
+            <p className="mt-3 text-sm text-(--text-2)">
+              Tap <span className="font-semibold text-(--text)">Share</span> in Safari, then choose{" "}
+              <span className="font-semibold text-(--text)">Add to Home Screen</span>.
+            </p>
+            <button
+              type="button"
+              className="btn-canvas-ghost mt-4 w-full px-4 py-2.5 text-sm"
+              onClick={() => setShowIosInstallHelp(false)}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
