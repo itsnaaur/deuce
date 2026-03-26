@@ -25,12 +25,15 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
     try {
       const ua = window.navigator.userAgent.toLowerCase();
       const isIOS = /iphone|ipad|ipod/.test(ua);
+      const isIPadOSDesktopUA =
+        window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1;
+      const isIOSLike = isIOS || isIPadOSDesktopUA;
       const isStandalone =
         window.matchMedia?.("(display-mode: standalone)")?.matches ||
         // Safari iOS legacy property
         (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
       const dismissed = localStorage.getItem(IOS_INSTALL_HINT_DISMISSED_KEY) === "1";
-      setShowIosInstallHint(isIOS && !isStandalone && !dismissed);
+      setShowIosInstallHint(isIOSLike && !isStandalone && !dismissed);
     } catch {
       // ignore platform detection failures
     }

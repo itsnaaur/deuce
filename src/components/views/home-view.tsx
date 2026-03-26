@@ -13,8 +13,12 @@ type BeforeInstallPromptEvent = Event & {
 
 export function HomeView() {
   const [showStartSessionPrompt, setShowStartSessionPrompt] = useState(false);
-  const [showIosInstallHelp, setShowIosInstallHelp] = useState(false);
+  const [showInstallHelp, setShowInstallHelp] = useState(false);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isIOSBrowser, setIsIOSBrowser] = useState(false);
+  const [isAndroidBrowser, setIsAndroidBrowser] = useState(false);
+  const [isIosHintVisible, setIsIosHintVisible] = useState(false);
   const {
     players,
     waitingPlayers,
@@ -47,6 +51,32 @@ export function HomeView() {
   };
 
   useEffect(() => {
+    const evaluateInstallUiState = () => {
+      const ua = window.navigator.userAgent.toLowerCase();
+      const isIOS = /iphone|ipad|ipod/.test(ua);
+      const isAndroid = /android/.test(ua);
+      const isIPadOSDesktopUA =
+        window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1;
+      const legacyStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+      const androidStandalone = window.document.referrer.startsWith("android-app://");
+      const displayModeStandalone =
+        window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
+        window.matchMedia?.("(display-mode: fullscreen)")?.matches === true ||
+        window.matchMedia?.("(display-mode: minimal-ui)")?.matches === true;
+      const standalone = legacyStandalone || androidStandalone || displayModeStandalone;
+      const iosHintDismissed = localStorage.getItem("deuce-ios-install-hint-dismissed") === "1";
+
+      setIsStandalone(standalone);
+      setIsIOSBrowser((isIOS || isIPadOSDesktopUA) && !standalone);
+      setIsAndroidBrowser(isAndroid && !standalone);
+      setIsIosHintVisible((isIOS || isIPadOSDesktopUA) && !standalone && !iosHintDismissed);
+    };
+
+    evaluateInstallUiState();
+
+    window.addEventListener("resize", evaluateInstallUiState);
+    window.addEventListener("orientationchange", evaluateInstallUiState);
+
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
@@ -54,6 +84,8 @@ export function HomeView() {
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
     return () => {
+      window.removeEventListener("resize", evaluateInstallUiState);
+      window.removeEventListener("orientationchange", evaluateInstallUiState);
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt as EventListener);
     };
   }, []);
@@ -66,15 +98,23 @@ export function HomeView() {
       return;
     }
 
-    const ua = window.navigator.userAgent.toLowerCase();
-    const isIOS = /iphone|ipad|ipod/.test(ua);
-    const isStandalone =
-      window.matchMedia?.("(display-mode: standalone)")?.matches ||
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-    if (isIOS && !isStandalone) {
-      setShowIosInstallHelp(true);
+    if (isIOSBrowser) {
+      setShowInstallHelp(true);
+      return;
     }
+
+    if (isAndroidBrowser) {
+      setShowInstallHelp(true);
+      return;
+    }
+
+    setShowInstallHelp(true);
   };
+
+  const shouldShowInstallButton = !isStandalone;
+  const installButtonPositionClass = isIosHintVisible
+    ? "top-4 right-4 md:top-5 md:right-5"
+    : "bottom-[calc(5.7rem+env(safe-area-inset-bottom))] right-4 md:bottom-[calc(6.6rem+env(safe-area-inset-bottom))] md:right-6";
 
   return (
     <div className="deuce-canvas relative flex min-h-full flex-1 flex-col">
@@ -241,17 +281,19 @@ export function HomeView() {
           </Link>
         </div>
       </div>
-      <button
-        type="button"
-        onClick={() => void handleInstallClick()}
-        className="fixed bottom-[calc(5.7rem+env(safe-area-inset-bottom))] right-4 z-50 inline-flex h-11 w-11 items-center justify-center rounded-full border border-(--border) bg-(--surface) text-(--accent-on-light) shadow-(--shadow-soft) transition hover:bg-(--surface-2) md:bottom-6 md:right-6 md:h-12 md:w-12 2xl:hidden"
-        aria-label="Install app"
-        title="Install app"
-      >
-        <svg className="h-5 w-5 md:h-6 md:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v1.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V17" />
-        </svg>
-      </button>
+      {shouldShowInstallButton ? (
+        <button
+          type="button"
+          onClick={() => void handleInstallClick()}
+          className={`fixed z-80 inline-flex h-11 w-11 items-center justify-center rounded-full bg-(--accent-on-light) text-white shadow-[0_10px_32px_rgba(12,35,64,0.38)] ring-2 ring-white/70 transition hover:brightness-110 md:h-12 md:w-12 2xl:hidden ${installButtonPositionClass}`}
+          aria-label="Install app"
+          title="Install app"
+        >
+          <svg className="h-5 w-5 md:h-6 md:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v1.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V17" />
+          </svg>
+        </button>
+      ) : null}
       <StartSessionModal
         open={showStartSessionPrompt}
         playerCount={players.length}
@@ -265,18 +307,30 @@ export function HomeView() {
           void startSession({ clearPlayers: true });
         }}
       />
-      {showIosInstallHelp ? (
+      {showInstallHelp ? (
         <div className="fixed inset-0 z-70 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl border border-(--border) bg-(--surface) p-5 shadow-(--shadow-lift)">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-(--text-muted)">Install on iPhone</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
+              {isAndroidBrowser ? "Install on Android" : "Install on iPhone/iPad"}
+            </p>
             <p className="mt-3 text-sm text-(--text-2)">
-              Tap <span className="font-semibold text-(--text)">Share</span> in Safari, then choose{" "}
-              <span className="font-semibold text-(--text)">Add to Home Screen</span>.
+              {isAndroidBrowser ? (
+                <>
+                  Tap your browser menu (<span className="font-semibold text-(--text)">3 dots</span>) and choose{" "}
+                  <span className="font-semibold text-(--text)">Install app</span> or{" "}
+                  <span className="font-semibold text-(--text)">Add to Home screen</span>.
+                </>
+              ) : (
+                <>
+                  Tap <span className="font-semibold text-(--text)">Share</span> in Safari, then choose{" "}
+                  <span className="font-semibold text-(--text)">Add to Home Screen</span>.
+                </>
+              )}
             </p>
             <button
               type="button"
               className="btn-canvas-ghost mt-4 w-full px-4 py-2.5 text-sm"
-              onClick={() => setShowIosInstallHelp(false)}
+              onClick={() => setShowInstallHelp(false)}
             >
               Got it
             </button>
