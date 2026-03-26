@@ -2,6 +2,7 @@
 
 import { memo, useId, useMemo } from "react";
 import { motion } from "framer-motion";
+import { usePerformanceMode } from "@/hooks/use-performance-mode";
 import type { Player } from "@/lib/types";
 
 type BadmintonCourtProps = {
@@ -16,6 +17,7 @@ type BadmintonCourtProps = {
   onStart: () => void;
   onEnd: () => void;
   onAutoFill?: () => void;
+  startPending?: boolean;
   /** Large vertical cards for mobile umpire view */
   variant?: "default" | "umpire";
 };
@@ -35,10 +37,12 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
   onStart,
   onEnd,
   onAutoFill,
+  startPending = false,
   variant = "default",
 }: BadmintonCourtProps) {
   const gid = useId().replace(/:/g, "");
   const isUmpire = variant === "umpire";
+  const { reducedMotion } = usePerformanceMode();
 
   const slotPlayers = useMemo(() => {
     const next = new Map<number, Player | undefined>();
@@ -197,6 +201,7 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
                 onAssign={onAssign}
                 onClear={onClear}
                 large={isUmpire}
+                reducedMotion={reducedMotion}
               />
               <TeamPod
                 teamLabel="Team B"
@@ -207,6 +212,7 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
                 onAssign={onAssign}
                 onClear={onClear}
                 large={isUmpire}
+                reducedMotion={reducedMotion}
               />
             </div>
           </div>
@@ -221,6 +227,7 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
                 onAssign={onAssign}
                 onClear={onClear}
                 large={isUmpire}
+                reducedMotion={reducedMotion}
               />
               <TeamPod
                 teamLabel="Team B"
@@ -231,6 +238,7 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
                 onAssign={onAssign}
                 onClear={onClear}
                 large={isUmpire}
+                reducedMotion={reducedMotion}
               />
             </div>
           </div>
@@ -255,13 +263,13 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
           </button>
           <button
             type="button"
-            disabled={disabled || isActive}
+            disabled={disabled || isActive || startPending}
             onClick={onStart}
             className={`btn-court-primary w-full ${
               isUmpire ? "py-2.5 text-sm sm:py-3 sm:text-base md:py-3.5 md:text-base lg:py-4 lg:text-lg" : "py-3 text-sm"
             }`}
           >
-            Start match
+            {startPending ? "Starting..." : "Start match"}
           </button>
           <button
             type="button"
@@ -288,6 +296,7 @@ function TeamPod({
   onAssign,
   onClear,
   large,
+  reducedMotion,
 }: {
   teamLabel: string;
   positions: [1 | 2 | 3 | 4, 1 | 2 | 3 | 4];
@@ -297,6 +306,7 @@ function TeamPod({
   onAssign: (playerId: string, position: number) => void;
   onClear: (position: number) => void;
   large: boolean;
+  reducedMotion: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1.5 rounded-xl border border-white/25 bg-black/10 p-1.5 md:gap-2 md:p-3">
@@ -314,6 +324,7 @@ function TeamPod({
           onAssign={onAssign}
           onClear={onClear}
           large={large}
+          reducedMotion={reducedMotion}
         />
         <TeamMemberSlot
           position={positions[1]}
@@ -323,6 +334,7 @@ function TeamPod({
           onAssign={onAssign}
           onClear={onClear}
           large={large}
+          reducedMotion={reducedMotion}
         />
       </div>
     </div>
@@ -337,6 +349,7 @@ function TeamMemberSlot({
   onAssign,
   onClear,
   large,
+  reducedMotion,
 }: {
   position: number;
   player: Player | undefined;
@@ -345,8 +358,36 @@ function TeamMemberSlot({
   onAssign: (playerId: string, position: number) => void;
   onClear: (position: number) => void;
   large: boolean;
+  reducedMotion: boolean;
 }) {
   if (player) {
+    if (reducedMotion) {
+      return (
+        <div className="min-w-0 rounded-md bg-white/10 px-1.5 py-1 md:px-2 md:py-1.5">
+          <p
+            className={`truncate font-semibold leading-tight text-white ${large ? "text-[11px] sm:text-sm md:text-base" : "text-xs"}`}
+            title={player.name}
+          >
+            {player.name}
+          </p>
+          <p
+            className={`truncate text-white/75 ${large ? "text-[10px] sm:text-xs md:text-sm" : "text-[10px]"}`}
+            title={`${player.skillLevel} · ${player.gender}`}
+          >
+            {player.skillLevel} · {player.gender}
+          </p>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onClear(position)}
+            className="mt-1 rounded-md bg-black/25 px-1.5 py-0.5 text-[9px] font-medium text-white transition hover:bg-black/35 disabled:cursor-not-allowed disabled:opacity-50 md:px-2 md:text-[10px]"
+          >
+            Remove
+          </button>
+        </div>
+      );
+    }
+
     return (
       <motion.div
         layoutId={`queue-player-${player.id}`}

@@ -28,6 +28,11 @@
   --glass-border: color-mix(in oklab, var(--accent-on-light) 18%, white 82%);
 }
 
+[data-mobile-performance="1"] {
+  --shadow-soft: 0 2px 12px rgba(5, 11, 20, 0.05);
+  --shadow-lift: 0 10px 24px rgba(5, 11, 20, 0.1);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -39,15 +44,26 @@ html[data-scroll-behavior="smooth"] {
 
 html {
   background: var(--canvas);
+  width: 100%;
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
   background: var(--canvas);
   color: var(--text);
   font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+a,
+button,
+label {
+  touch-action: manipulation;
 }
 
 .font-display {
@@ -59,6 +75,8 @@ body {
   flex: 1;
   min-width: 0;
   min-height: 100vh;
+  max-width: 100vw;
+  overflow-x: clip;
   background-color: var(--canvas);
   background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
   background-size: 28px 28px;
@@ -389,4 +407,40 @@ body {
 .page-title {
   margin-top: 0.35rem;
   color: var(--accent-on-light);
+}
+
+[data-mobile-performance="1"] .backdrop-blur-sm,
+[data-mobile-performance="1"] .backdrop-blur-md,
+[data-mobile-performance="1"] .backdrop-blur-xl {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+html[data-mobile-performance="1"][data-scroll-behavior="smooth"] {
+  scroll-behavior: auto;
+}
+
+/* iOS Safari zooms form controls when font-size is under 16px. */
+@media (max-width: 1024px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Hide visible vertical scrollbars on phone/tablet; keep desktop scrollbar behavior. */
+@media (max-width: 1535px) {
+  html,
+  body {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge legacy */
+  }
+
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
+    display: none; /* Chrome/Safari/Android WebView */
+    width: 0;
+    height: 0;
+  }
 }

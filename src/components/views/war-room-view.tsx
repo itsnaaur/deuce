@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { LayoutGroup } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BadmintonCourtView } from "@/components/badminton-court";
 import { QueueDrawer } from "@/components/queue/queue-drawer";
 import { LiveSidePanel } from "@/components/session/live-side-panel";
@@ -71,17 +71,19 @@ function CourtList({
   onOpenEndMatch,
   sessionReady,
   variant,
+  startingCourtId,
 }: {
   sortedCourts: Court[];
   playerById: Map<string, Player>;
   waitingPlayers: Player[];
   assignToCourt: (playerId: string, courtId: string, position: number) => void;
   clearSlot: (courtId: string, position: number) => void;
-  startMatch: (courtId: string) => void;
+  startMatch: (courtId: string) => Promise<void>;
   onAutoFill: (court: Court) => void;
   onOpenEndMatch: (court: Court) => void;
   sessionReady: boolean;
   variant: "default" | "umpire";
+  startingCourtId: string | null;
 }) {
   return (
     <>
@@ -100,6 +102,7 @@ function CourtList({
           onAutoFill={() => onAutoFill(court)}
           onStart={() => void startMatch(court.id)}
           onEnd={() => onOpenEndMatch(court)}
+          startPending={startingCourtId === court.id}
         />
       ))}
     </>
@@ -113,9 +116,13 @@ export function WarRoomView() {
   const [endMatchTarget, setEndMatchTarget] = useState<{ courtId: string; courtLabel: string } | null>(null);
   const [scoreA, setScoreA] = useState("21");
   const [scoreB, setScoreB] = useState("18");
+  const [endMatchError, setEndMatchError] = useState<string | null>(null);
+  const [isEndingMatch, setIsEndingMatch] = useState(false);
   const [autoFillError, setAutoFillError] = useState<string | null>(null);
   const [showStartSessionPrompt, setShowStartSessionPrompt] = useState(false);
+  const [startingCourtId, setStartingCourtId] = useState<string | null>(null);
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
+  const slotPlayerCacheRef = useRef<Map<string, Player>>(new Map());
 
   const {
     sortedCourts,
@@ -137,14 +144,56 @@ export function WarRoomView() {
   const courtTotal = Math.max(courts.length, 1);
 
   const safeCourtIndex = Math.min(courtIndex, Math.max(0, sortedCourts.length - 1));
+  const stablePlayerById = useMemo(() => {
+    const slotPlayerIds = new Set<string>();
+    for (const court of sortedCourts) {
+      for (const slot of court.slots) {
+        if (slot.playerId) {
+          slotPlayerIds.add(slot.playerId);
+        }
+      }
+    }
+
+    // Keep last-known player details for active slot assignments.
+    for (const [id, player] of playerById) {
+      if (slotPlayerIds.has(id)) {
+        slotPlayerCacheRef.current.set(id, player);
+      }
+    }
+
+    // Drop cached players no longer assigned to any slot.
+    for (const id of [...slotPlayerCacheRef.current.keys()]) {
+      if (!slotPlayerIds.has(id)) {
+        slotPlayerCacheRef.current.delete(id);
+      }
+    }
+
+    const merged = new Map(playerById);
+    for (const [id, player] of slotPlayerCacheRef.current) {
+      if (!merged.has(id)) {
+        merged.set(id, player);
+      }
+    }
+    return merged;
+  }, [playerById, sortedCourts]);
 
   const shared = {
     sortedCourts,
-    playerById,
+    playerById: stablePlayerById,
     waitingPlayers,
     assignToCourt,
     clearSlot,
-    startMatch,
+    startMatch: async (courtId: string) => {
+      if (startingCourtId) {
+        return;
+      }
+      setStartingCourtId(courtId);
+      try {
+        await startMatch(courtId);
+      } finally {
+        setStartingCourtId(null);
+      }
+    },
     onAutoFill: (court: Court) => {
       const isEmpty = court.slots.every((slot) => !slot.playerId);
       if (!isEmpty || court.isActive || waitingPlayers.length < 4) {
@@ -195,6 +244,7 @@ export function WarRoomView() {
     },
     onOpenEndMatch: (court: Court) => setEndMatchTarget({ courtId: court.id, courtLabel: court.label }),
     sessionReady: Boolean(activeSession),
+    startingCourtId,
   };
 
   const activeCourt = sortedCourts[safeCourtIndex];
@@ -258,6 +308,13 @@ export function WarRoomView() {
     };
   }, [activeSession]);
 
+  useEffect(() => {
+    if (!endMatchTarget) {
+      setIsEndingMatch(false);
+      setEndMatchError(null);
+    }
+  }, [endMatchTarget]);
+
   return (
     <LayoutGroup id="war-room-player-flow">
       <div className="deuce-canvas relative flex min-h-full flex-1 flex-col">
@@ -271,6 +328,7 @@ export function WarRoomView() {
                 alt="Deuce"
                 width={320}
                 height={86}
+                unoptimized
                 className="page-logo mx-auto"
                 priority
               />
@@ -326,6 +384,7 @@ export function WarRoomView() {
                 alt="Deuce"
                 width={360}
                 height={96}
+                unoptimized
                 className="page-logo mx-auto"
                 priority
               />
@@ -351,15 +410,16 @@ export function WarRoomView() {
                 label={activeCourt.label}
                 isActive={activeCourt.isActive}
                 slots={activeCourt.slots}
-                playerById={playerById}
+                playerById={stablePlayerById}
                 waitingPlayers={waitingPlayers}
                 disabled={activeCourt.isActive || !activeSession}
                 variant="umpire"
                 onAssign={(playerId, position) => void assignToCourt(playerId, activeCourt.id, position)}
                 onClear={(position) => void clearSlot(activeCourt.id, position)}
                 onAutoFill={() => shared.onAutoFill(activeCourt)}
-                onStart={() => void startMatch(activeCourt.id)}
+                onStart={() => void shared.startMatch(activeCourt.id)}
                 onEnd={() => setEndMatchTarget({ courtId: activeCourt.id, courtLabel: activeCourt.label })}
+                startPending={startingCourtId === activeCourt.id}
               />
             ) : (
               <p className="text-center text-(--text-muted)">No courts configured.</p>
@@ -520,23 +580,41 @@ export function WarRoomView() {
               <button
                 type="button"
                 className="btn-canvas-ghost flex-1 px-4 py-2.5 text-sm"
-                onClick={() => setEndMatchTarget(null)}
+                onClick={() => {
+                  setEndMatchError(null);
+                  setEndMatchTarget(null);
+                }}
               >
                 Cancel
               </button>
               <button
                 type="button"
                 className="btn-court-end flex-1 px-4 py-2.5 text-sm"
-                onClick={() => {
+                disabled={isEndingMatch}
+                onClick={async () => {
+                  if (isEndingMatch) {
+                    return;
+                  }
+                  setIsEndingMatch(true);
                   const parsedA = Math.max(0, Number(scoreA) || 0);
                   const parsedB = Math.max(0, Number(scoreB) || 0);
-                  void endMatch(endMatchTarget.courtId, parsedA, parsedB);
+                  const saved = await endMatch(endMatchTarget.courtId, parsedA, parsedB);
+                  if (!saved) {
+                    setEndMatchError("Unable to end this match right now. Please retry.");
+                    setIsEndingMatch(false);
+                    return;
+                  }
+                  setEndMatchError(null);
+                  setIsEndingMatch(false);
                   setEndMatchTarget(null);
                 }}
               >
-                Save result
+                {isEndingMatch ? "Saving..." : "Save result"}
               </button>
             </div>
+            {endMatchError ? (
+              <p className="mt-3 text-center text-xs font-medium text-amber-700">{endMatchError}</p>
+            ) : null}
           </div>
         </div>
       ) : null}

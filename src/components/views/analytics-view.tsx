@@ -13,10 +13,12 @@ const formatDuration = (durationMs: number) => {
 };
 
 export function AnalyticsView() {
-  const { players, sessions, activeSession, sessionMatches, playerById } = useDeuceSession();
+  const { players, sessions, activeSession, sessionMatches, playerById, resetMemory } = useDeuceSession();
   const [selectedSessionId, setSelectedSessionId] = useState<string>("active");
   const [visibleLeaderboardCount, setVisibleLeaderboardCount] = useState(3);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(10);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const resolvedSessionId =
     selectedSessionId === "active" ? (activeSession?.id ?? "all") : selectedSessionId;
 
@@ -71,6 +73,23 @@ export function AnalyticsView() {
     setVisibleHistoryCount(10);
   }, [resolvedSessionId]);
 
+  const handleResetMemory = async () => {
+    if (isResetting) {
+      return;
+    }
+    setIsResetting(true);
+    await resetMemory();
+    try {
+      localStorage.removeItem("deuce-ios-install-hint-dismissed");
+      localStorage.removeItem("deuce-sidebar-collapsed");
+    } catch {
+      // ignore localStorage failures
+    }
+    setIsResetting(false);
+    setShowResetConfirm(false);
+    setSelectedSessionId("active");
+  };
+
   return (
     <div className="deuce-canvas relative flex min-h-full flex-1 flex-col">
       <div className="page-shell pb-24 2xl:pb-12">
@@ -81,6 +100,7 @@ export function AnalyticsView() {
               alt="Deuce"
               width={320}
               height={86}
+              unoptimized
               className="page-logo mx-auto"
               priority
             />
@@ -199,7 +219,50 @@ export function AnalyticsView() {
             )}
           </div>
         </section>
+
+        <section className="mt-10 border-t border-(--border) pt-8">
+          <h2 className="font-display text-lg font-semibold text-(--accent-on-light) md:text-xl">Maintenance</h2>
+          <p className="mt-2 text-sm text-(--text-2)">
+            Reset memory to clear all locally stored Deuce session and match data.
+          </p>
+          <button
+            type="button"
+            className="btn-court-end mt-4 w-full px-4 py-2.5 text-sm md:w-auto"
+            onClick={() => setShowResetConfirm(true)}
+          >
+            Reset memory
+          </button>
+        </section>
       </div>
+      {showResetConfirm ? (
+        <div className="fixed inset-0 z-80 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-(--border) bg-(--surface) p-5 shadow-(--shadow-lift)">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-(--text-muted)">Reset memory</p>
+            <h3 className="font-display mt-2 text-2xl font-semibold text-(--accent-on-light)">Erase all local data?</h3>
+            <p className="mt-2 text-sm text-(--text-2)">
+              Resetting will erase all memory and data from all sessions you held before on this device.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                className="btn-canvas-ghost flex-1 px-4 py-2.5 text-sm"
+                disabled={isResetting}
+                onClick={() => setShowResetConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-court-end flex-1 px-4 py-2.5 text-sm"
+                disabled={isResetting}
+                onClick={() => void handleResetMemory()}
+              >
+                {isResetting ? "Resetting..." : "Reset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

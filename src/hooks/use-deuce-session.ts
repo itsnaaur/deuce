@@ -204,26 +204,42 @@ export function useDeuceSession() {
     await db.courts.update(courtId, { slots: updatedSlots, updatedAt: getNow() });
   };
 
-  const startMatch = async (courtId: string) => {
-    if (!activeSession) {
-      return;
-    }
-    await db.courts.update(courtId, {
-      isActive: true,
-      matchStartedAt: getNow(),
-      updatedAt: getNow(),
+  const startMatch = async (courtId: string): Promise<boolean> => {
+    let didStart = false;
+    await db.transaction("rw", db.courts, db.sessions, async () => {
+      const session = await db.sessions.where("status").equals("active").first();
+      if (!session) {
+        return;
+      }
+      const court = await db.courts.get(courtId);
+      if (!court || court.isActive) {
+        return;
+      }
+      const hasFourPlayers = court.slots.every((slot) => Boolean(slot.playerId));
+      if (!hasFourPlayers) {
+        return;
+      }
+      const now = getNow();
+      await db.courts.update(courtId, {
+        isActive: true,
+        matchStartedAt: now,
+        updatedAt: now,
+      });
+      didStart = true;
     });
+    return didStart;
   };
 
   const startSuggestedMatch = async (
     courtId: string,
     playerIds: [string, string, string, string],
   ): Promise<boolean> => {
-    if (!activeSession) {
-      return false;
-    }
     let started = false;
-    await db.transaction("rw", db.players, db.courts, async () => {
+    await db.transaction("rw", db.players, db.courts, db.sessions, async () => {
+      const session = await db.sessions.where("status").equals("active").first();
+      if (!session) {
+        return;
+      }
       const court = await db.courts.get(courtId);
       if (!court || court.isActive) {
         return;
@@ -269,29 +285,31 @@ export function useDeuceSession() {
     return started;
   };
 
-  const endMatch = async (courtId: string, scoreA: number, scoreB: number) => {
-    if (!activeSession) {
-      return;
-    }
-    const court = courts.find((c) => c.id === courtId);
-    if (!court) {
-      return;
-    }
+  const endMatch = async (courtId: string, scoreA: number, scoreB: number): Promise<boolean> => {
+    const normalizedScoreA = Number.isFinite(scoreA) ? Math.max(0, Math.trunc(scoreA)) : 0;
+    const normalizedScoreB = Number.isFinite(scoreB) ? Math.max(0, Math.trunc(scoreB)) : 0;
+    let didEnd = false;
 
-    const finishedPlayerIds = court.slots
-      .map((slot) => slot.playerId)
-      .filter((id): id is string => Boolean(id));
-    if (finishedPlayerIds.length !== 4) {
-      return;
-    }
+    await db.transaction("rw", db.players, db.courts, db.sessionMatches, db.sessions, async () => {
+      const court = await db.courts.get(courtId);
+      if (!court || !court.isActive) {
+        return;
+      }
+      const finishedPlayerIds = court.slots
+        .map((slot) => slot.playerId)
+        .filter((id): id is string => Boolean(id));
+      if (finishedPlayerIds.length !== 4) {
+        return;
+      }
 
-    await db.transaction("rw", db.players, db.courts, db.sessionMatches, async () => {
       const now = getNow();
       const startedAt = court.matchStartedAt ?? now;
       const durationMs = Math.max(0, now - startedAt);
-      const winner: MatchWinner = scoreA === scoreB ? "Draw" : scoreA > scoreB ? "A" : "B";
+      const winner: MatchWinner =
+        normalizedScoreA === normalizedScoreB ? "Draw" : normalizedScoreA > normalizedScoreB ? "A" : "B";
       const teamAPlayerIds: [string, string] = [finishedPlayerIds[0], finishedPlayerIds[1]];
       const teamBPlayerIds: [string, string] = [finishedPlayerIds[2], finishedPlayerIds[3]];
+      const session = await db.sessions.where("status").equals("active").first();
 
       for (const id of finishedPlayerIds) {
         const player = await db.players.get(id);
@@ -306,13 +324,13 @@ export function useDeuceSession() {
 
       const matchRecord: SessionMatch = {
         id: uid(),
-        sessionId: activeSession.id,
+        sessionId: session?.id,
         courtId: court.id,
         courtLabel: court.label,
         teamAPlayerIds,
         teamBPlayerIds,
-        scoreA,
-        scoreB,
+        scoreA: normalizedScoreA,
+        scoreB: normalizedScoreB,
         winner,
         startedAt,
         endedAt: now,
@@ -332,7 +350,9 @@ export function useDeuceSession() {
         ],
         updatedAt: now,
       });
+      didEnd = true;
     });
+    return didEnd;
   };
 
   const updateSettings = async (next: Partial<SessionSettings>) => {
@@ -445,6 +465,20 @@ export function useDeuceSession() {
       }
       await db.settings.update("default", { randomStartUsed: false, updatedAt: now });
     });
+  };
+
+  const resetMemory = async () => {
+    const now = getNow();
+    await db.sessions.clear();
+    await db.sessionMatches.clear();
+    await db.players.clear();
+    await db.courts.clear();
+    await db.settings.clear();
+    await db.settings.put({
+      ...DEFAULT_SETTINGS,
+      updatedAt: now,
+    });
+    await db.courts.bulkPut([createEmptyCourt(1), createEmptyCourt(2)]);
   };
   const playerCompetitionStats = useMemo(() => {
     const stats = new Map<string, { wins: number; losses: number; draws: number; matches: number; winRate: number }>();
@@ -630,6 +664,7 @@ export function useDeuceSession() {
     endMatch,
     startSession,
     endSession,
+    resetMemory,
     updateSettings,
     syncCourtsCount,
     randomizeStartOrder,

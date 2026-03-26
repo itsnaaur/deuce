@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { usePerformanceMode } from "@/hooks/use-performance-mode";
 import { QueuePanel } from "@/components/queue/queue-panel";
 import type { Player } from "@/lib/types";
 
@@ -16,6 +17,8 @@ type QueueDrawerProps = {
  * Open from the floating button; close via backdrop, Done, or the handle bar.
  */
 export function QueueDrawer({ open, onOpenChange, waitingPlayers }: QueueDrawerProps) {
+  const { reducedMotion } = usePerformanceMode();
+
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
@@ -28,7 +31,7 @@ export function QueueDrawer({ open, onOpenChange, waitingPlayers }: QueueDrawerP
   }, [open]);
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode={reducedMotion ? "sync" : "wait"}>
       {open && (
         <>
           <motion.button
@@ -38,6 +41,7 @@ export function QueueDrawer({ open, onOpenChange, waitingPlayers }: QueueDrawerP
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={reducedMotion ? { duration: 0.12 } : undefined}
             onClick={() => onOpenChange(false)}
           />
           <motion.div
@@ -48,7 +52,7 @@ export function QueueDrawer({ open, onOpenChange, waitingPlayers }: QueueDrawerP
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 34, stiffness: 400 }}
+            transition={reducedMotion ? { duration: 0.14, ease: "easeOut" } : { type: "spring", damping: 34, stiffness: 400 }}
           >
             <div className="flex items-center justify-between border-b border-(--border) px-5 py-3 md:px-8 md:py-5">
               <div className="flex flex-col gap-1">

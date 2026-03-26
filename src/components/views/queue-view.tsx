@@ -60,6 +60,7 @@ export function QueueView() {
               alt="Deuce"
               width={320}
               height={86}
+              unoptimized
               className="page-logo mx-auto"
               priority
             />

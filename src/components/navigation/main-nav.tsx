@@ -179,6 +179,7 @@ export function AppSidebarNav({
             alt="Deuce icon logo"
             width={collapsed ? 28 : 34}
             height={collapsed ? 28 : 34}
+            unoptimized
             className={collapsed ? "h-7 w-7 object-contain" : "h-8 w-8 object-contain"}
             priority
           />
@@ -216,6 +217,7 @@ export function AppSidebarNav({
             alt="Brand signature"
             width={collapsed ? 24 : 44}
             height={collapsed ? 24 : 44}
+            unoptimized
             className={`${collapsed ? "h-6 w-6" : "h-11 w-11"} rounded-md object-contain opacity-80`}
           />
         </div>

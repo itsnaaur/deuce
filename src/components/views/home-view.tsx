@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { StartSessionModal } from "@/components/session/start-session-modal";
 import { useDeuceSession } from "@/hooks/use-deuce-session";
+import { isAndroidDevice, isIOSLikeDevice, isStandaloneAppDisplay } from "@/lib/platform";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -52,24 +53,15 @@ export function HomeView() {
 
   useEffect(() => {
     const evaluateInstallUiState = () => {
-      const ua = window.navigator.userAgent.toLowerCase();
-      const isIOS = /iphone|ipad|ipod/.test(ua);
-      const isAndroid = /android/.test(ua);
-      const isIPadOSDesktopUA =
-        window.navigator.platform === "MacIntel" && window.navigator.maxTouchPoints > 1;
-      const legacyStandalone = (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-      const androidStandalone = window.document.referrer.startsWith("android-app://");
-      const displayModeStandalone =
-        window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
-        window.matchMedia?.("(display-mode: fullscreen)")?.matches === true ||
-        window.matchMedia?.("(display-mode: minimal-ui)")?.matches === true;
-      const standalone = legacyStandalone || androidStandalone || displayModeStandalone;
+      const standalone = isStandaloneAppDisplay();
+      const isIOSLike = isIOSLikeDevice();
+      const isAndroid = isAndroidDevice();
       const iosHintDismissed = localStorage.getItem("deuce-ios-install-hint-dismissed") === "1";
 
       setIsStandalone(standalone);
-      setIsIOSBrowser((isIOS || isIPadOSDesktopUA) && !standalone);
+      setIsIOSBrowser(isIOSLike && !standalone);
       setIsAndroidBrowser(isAndroid && !standalone);
-      setIsIosHintVisible((isIOS || isIPadOSDesktopUA) && !standalone && !iosHintDismissed);
+      setIsIosHintVisible(isIOSLike && !standalone && !iosHintDismissed);
     };
 
     evaluateInstallUiState();
@@ -126,6 +118,7 @@ export function HomeView() {
               alt="Deuce"
               width={360}
               height={96}
+              unoptimized
               className="page-logo mx-auto"
               priority
             />
