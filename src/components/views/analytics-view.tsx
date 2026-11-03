@@ -140,15 +140,24 @@ export function AnalyticsView() {
             ) : (
               leaderboard.slice(0, visibleLeaderboardCount).map((row, index) => {
                 const rank = index + 1;
-                const podiumClass =
-                  rank === 1
+                // Podium styling and medals are only for players who have actually won a game.
+                const onPodium = rank <= 3 && row.wins > 0;
+                const podiumClass = !onPodium
+                  ? "border-(--border) bg-(--surface)"
+                  : rank === 1
                     ? "border-amber-300/70 bg-amber-50/60"
                     : rank === 2
                       ? "border-slate-300/80 bg-slate-50/80"
                       : rank === 3
                         ? "border-orange-300/70 bg-orange-50/60"
                         : "border-(--border) bg-(--surface)";
-                const rankLabel = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
+                const rankLabel = !onPodium
+                  ? `#${rank}`
+                  : rank === 1
+                    ? "🥇"
+                    : rank === 2
+                      ? "🥈"
+                      : "🥉";
                 return (
                   <div
                     key={row.player.id}
@@ -159,7 +168,7 @@ export function AnalyticsView() {
                         {rankLabel} {row.player.name}
                       </p>
                       <p className="text-xs text-(--text-2)">
-                        {row.wins}W / {row.losses}L / {row.draws}D ({row.matches} matches)
+                        {row.wins}W / {row.losses}L / {row.draws}D ({row.matches} {row.matches === 1 ? "match" : "matches"})
                       </p>
                     </div>
                     <span className="shrink-0 text-sm font-bold tabular-nums text-(--accent-on-light)">

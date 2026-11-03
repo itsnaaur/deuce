@@ -54,7 +54,7 @@ export function QueuePanel({
                       {player.name}
                     </p>
                     <p className={`text-[11px] ${isLongWait ? "text-amber-800" : "text-(--text-2)"}`}>
-                      {player.gamesPlayed} games · {waitMinutes} min
+                      {player.gamesPlayed} {player.gamesPlayed === 1 ? "game" : "games"} · {waitMinutes} min
                     </p>
                   </div>
                   <span
@@ -85,7 +85,7 @@ export function QueuePanel({
                     {player.name}
                   </p>
                   <p className={`text-[11px] ${isLongWait ? "text-amber-800" : "text-(--text-2)"}`}>
-                    {player.gamesPlayed} games · {waitMinutes} min
+                    {player.gamesPlayed} {player.gamesPlayed === 1 ? "game" : "games"} · {waitMinutes} min
                   </p>
                 </div>
                 <span

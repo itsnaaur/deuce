@@ -283,7 +283,9 @@ export function HomeView() {
           title="Install app"
         >
           <svg className="h-5 w-5 md:h-6 md:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v11m0 0 4-4m-4 4-4-4M4 17v1.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V17" />
+            {/* Add-to-home-screen icon; a download arrow read as "export data". */}
+            <rect x="4" y="4" width="16" height="16" rx="4" />
+            <path strokeLinecap="round" d="M12 8.5v7M8.5 12h7" />
           </svg>
         </button>
       ) : null}
