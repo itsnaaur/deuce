@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppSidebarNav, AppTabBar } from "@/components/navigation/main-nav";
+import { useIsClient, useLocalStorageFlag } from "@/hooks/use-local-storage-flag";
 import { usePerformanceMode } from "@/hooks/use-performance-mode";
 import { isIOSLikeDevice, isStandaloneAppDisplay } from "@/lib/platform";
 
@@ -12,59 +13,28 @@ const IOS_INSTALL_HINT_DISMISSED_KEY = "deuce-ios-install-hint-dismissed";
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const { reducedMotion } = usePerformanceMode();
-  const [collapsed, setCollapsed] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [showIosInstallHint, setShowIosInstallHint] = useState(false);
+  const isClient = useIsClient();
+  const [collapsed, setCollapsed] = useLocalStorageFlag(STORAGE_KEY);
+  const [iosHintDismissed, setIosHintDismissed] = useLocalStorageFlag(IOS_INSTALL_HINT_DISMISSED_KEY);
+  const showIosInstallHint = isClient && !iosHintDismissed && isIOSLikeDevice() && !isStandaloneAppDisplay();
 
   useEffect(() => {
-    try {
-      setCollapsed(localStorage.getItem(STORAGE_KEY) === "1");
-    } catch {
-      /* ignore */
-    }
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    try {
-      const isIOSLike = isIOSLikeDevice();
-      const isStandalone = isStandaloneAppDisplay();
-      const dismissed = localStorage.getItem(IOS_INSTALL_HINT_DISMISSED_KEY) === "1";
-      setShowIosInstallHint(isIOSLike && !isStandalone && !dismissed);
-    } catch {
-      // ignore platform detection failures
-    }
-  }, [mounted]);
-
-  useEffect(() => {
-    if (!mounted) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-  }, [collapsed, mounted]);
-
-  useEffect(() => {
-    if (!mounted) return;
     // Warm key routes while online so iOS offline navigation works after first load.
     router.prefetch("/");
     router.prefetch("/queue");
     router.prefetch("/war-room");
     router.prefetch("/analytics");
-  }, [mounted, router]);
+  }, [router]);
 
   useEffect(() => {
-    if (!mounted) return;
     const root = document.documentElement;
     root.setAttribute("data-mobile-performance", reducedMotion ? "1" : "0");
     return () => {
       root.removeAttribute("data-mobile-performance");
     };
-  }, [mounted, reducedMotion]);
+  }, [reducedMotion]);
 
-  const toggle = () => setCollapsed((c) => !c);
+  const toggle = () => setCollapsed(!collapsed);
 
   /* Sidebar only at `2xl+`; inset padding applies only when the rail is visible */
   const mainInset = collapsed ? "2xl:pl-[4.5rem]" : "2xl:pl-60";
@@ -88,14 +58,7 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
             <button
               type="button"
               className="mx-auto mt-1 block text-[11px] font-semibold text-(--text-muted) hover:text-(--text)"
-              onClick={() => {
-                setShowIosInstallHint(false);
-                try {
-                  localStorage.setItem(IOS_INSTALL_HINT_DISMISSED_KEY, "1");
-                } catch {
-                  // ignore localStorage failures
-                }
-              }}
+              onClick={() => setIosHintDismissed(true)}
             >
               Dismiss
             </button>

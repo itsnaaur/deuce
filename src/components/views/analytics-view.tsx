@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useDeuceSession } from "@/hooks/use-deuce-session";
+import { notifyLocalStorageFlags } from "@/hooks/use-local-storage-flag";
 import type { SessionMatch } from "@/lib/types";
 
 const formatDuration = (durationMs: number) => {
@@ -68,10 +69,13 @@ export function AnalyticsView() {
       ? "All sessions"
       : sessions.find((session) => session.id === resolvedSessionId)?.name ?? "Selected session";
 
-  useEffect(() => {
+  // Collapse the lists again when switching sessions (adjusting state during render, not in an effect).
+  const [listsShownFor, setListsShownFor] = useState(resolvedSessionId);
+  if (listsShownFor !== resolvedSessionId) {
+    setListsShownFor(resolvedSessionId);
     setVisibleLeaderboardCount(3);
     setVisibleHistoryCount(10);
-  }, [resolvedSessionId]);
+  }
 
   const handleResetMemory = async () => {
     if (isResetting) {
@@ -85,6 +89,7 @@ export function AnalyticsView() {
     } catch {
       // ignore localStorage failures
     }
+    notifyLocalStorageFlags();
     setIsResetting(false);
     setShowResetConfirm(false);
     setSelectedSessionId("active");

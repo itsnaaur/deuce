@@ -152,7 +152,6 @@ export function WarRoomView() {
   const [showStartSessionPrompt, setShowStartSessionPrompt] = useState(false);
   const [startingCourtId, setStartingCourtId] = useState<string | null>(null);
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
-  const slotPlayerCacheRef = useRef<Map<string, Player>>(new Map());
 
   const {
     sortedCourts,
@@ -185,6 +184,8 @@ export function WarRoomView() {
     setScoreA("");
     setScoreB("");
     setConfirmDraw(false);
+    setIsEndingMatch(false);
+    setEndMatchError(null);
     setEndMatchTarget({
       courtId: court.id,
       courtLabel: court.label,
@@ -194,38 +195,9 @@ export function WarRoomView() {
   };
 
   const safeCourtIndex = Math.min(courtIndex, Math.max(0, sortedCourts.length - 1));
-  const stablePlayerById = useMemo(() => {
-    const slotPlayerIds = new Set<string>();
-    for (const court of sortedCourts) {
-      for (const slot of court.slots) {
-        if (slot.playerId) {
-          slotPlayerIds.add(slot.playerId);
-        }
-      }
-    }
-
-    // Keep last-known player details for active slot assignments.
-    for (const [id, player] of playerById) {
-      if (slotPlayerIds.has(id)) {
-        slotPlayerCacheRef.current.set(id, player);
-      }
-    }
-
-    // Drop cached players no longer assigned to any slot.
-    for (const id of [...slotPlayerCacheRef.current.keys()]) {
-      if (!slotPlayerIds.has(id)) {
-        slotPlayerCacheRef.current.delete(id);
-      }
-    }
-
-    const merged = new Map(playerById);
-    for (const [id, player] of slotPlayerCacheRef.current) {
-      if (!merged.has(id)) {
-        merged.set(id, player);
-      }
-    }
-    return merged;
-  }, [playerById, sortedCourts]);
+  // Players can't be removed while on a court, and clearing the roster also clears the courts,
+  // so every placed player is always in playerById.
+  const stablePlayerById = playerById;
 
   const shared = {
     sortedCourts,
@@ -406,13 +378,6 @@ export function WarRoomView() {
       void releaseWakeLock();
     };
   }, [activeSession]);
-
-  useEffect(() => {
-    if (!endMatchTarget) {
-      setIsEndingMatch(false);
-      setEndMatchError(null);
-    }
-  }, [endMatchTarget]);
 
   return (
     <LayoutGroup id="war-room-player-flow">

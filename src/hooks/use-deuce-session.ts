@@ -567,9 +567,19 @@ export function useDeuceSession() {
       createdAt: now,
       updatedAt: now,
     };
-    await db.transaction("rw", db.sessions, db.players, async () => {
+    await db.transaction("rw", db.sessions, db.players, db.courts, async () => {
       if (clearPlayers) {
         await db.players.clear();
+        // Nobody can stay on a court once the roster is cleared.
+        const allCourts = await db.courts.toArray();
+        for (const court of allCourts) {
+          await db.courts.update(court.id, {
+            isActive: false,
+            matchStartedAt: undefined,
+            slots: [{ position: 1 }, { position: 2 }, { position: 3 }, { position: 4 }],
+            updatedAt: now,
+          });
+        }
       }
       await db.sessions.add(newSession);
     });
