@@ -220,7 +220,8 @@ export function QueueView() {
               className="btn-canvas-primary px-5 py-3 text-sm"
               onClick={() => void submitAdd()}
             >
-              Add player
+              {/* Gender and level carry over between adds, so show them on the button. */}
+              Add player · {gender} · {selectedSkillLevel}
             </button>
           </div>
         </section>
@@ -423,7 +424,7 @@ function RosterRow({
             ) : (
               <button
                 type="button"
-                className="pill-toggle pill-toggle-off text-red-700"
+                className="pill-toggle bg-red-50 text-red-700 ring-1 ring-red-200 hover:bg-red-100"
                 onClick={() => {
                   setError(undefined);
                   setConfirmingRemove(true);

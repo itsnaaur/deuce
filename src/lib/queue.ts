@@ -101,3 +101,109 @@ export const getBestBalancedTeams = (
 // Strongest possible 2-player team minus weakest possible 2-player team.
 export const MAX_TEAM_POWER_GAP =
   getSkillPowerValue("A") + getSkillPowerValue("A") - (getSkillPowerValue("K") + getSkillPowerValue("K"));
+
+type MatchLike = { teamAPlayerIds: [string, string]; teamBPlayerIds: [string, string] };
+
+// Partner and matchmate pairs from each player's most recent game. Matches must be newest first.
+export const getRecentPairKeys = (matchesNewestFirst: MatchLike[]) => {
+  const seen = new Set<string>();
+  const partnerKeys = new Set<string>();
+  const matchmateKeys = new Set<string>();
+  for (const match of matchesNewestFirst) {
+    const ids = [...match.teamAPlayerIds, ...match.teamBPlayerIds];
+    const isLatestForSomeone = ids.some((id) => !seen.has(id));
+    if (isLatestForSomeone) {
+      for (const team of [match.teamAPlayerIds, match.teamBPlayerIds]) {
+        partnerKeys.add(getPartnerKey(team[0], team[1]));
+      }
+      for (let i = 0; i < ids.length; i += 1) {
+        for (let j = i + 1; j < ids.length; j += 1) {
+          matchmateKeys.add(getPartnerKey(ids[i], ids[j]));
+        }
+      }
+    }
+    ids.forEach((id) => seen.add(id));
+  }
+  return { partnerKeys, matchmateKeys };
+};
+
+// How far down the queue auto-fill may look for a better-balanced or more mixed group.
+export const AUTO_FILL_POOL_SIZE = 6;
+// Cost of passing over one of the next four in line; roughly one skill step of imbalance.
+export const SKIP_PENALTY = 5;
+// Cost per pair of players who were in the same game last time, so groups mix between rounds.
+export const REPEAT_MATCHMATE_PENALTY = 2;
+
+const combinations = <T,>(items: T[], size: number): T[][] => {
+  if (size === 0) return [[]];
+  if (items.length < size) return [];
+  const [first, ...rest] = items;
+  return [...combinations(rest, size - 1).map((combo) => [first, ...combo]), ...combinations(rest, size)];
+};
+
+/**
+ * Picks four players for an empty court. Normally the next four in the queue, but it may pass over
+ * someone in the next four for a player just behind them when that gives clearly better-balanced
+ * teams or avoids the same group replaying. It never passes over the first two in line, anyone who
+ * has waited past the anti-stagnation threshold, or anyone with fewer games than a replacement.
+ */
+export const pickAutoFillGroup = (
+  waitingInQueueOrder: Player[],
+  recent: { partnerKeys: ReadonlySet<string>; matchmateKeys: ReadonlySet<string> } = {
+    partnerKeys: new Set(),
+    matchmateKeys: new Set(),
+  },
+) => {
+  if (waitingInQueueOrder.length < 4) {
+    return null;
+  }
+  const nextFour = waitingInQueueOrder.slice(0, 4);
+  const mostGamesInNextFour = Math.max(...nextFour.map((p) => p.gamesPlayed));
+  const pool = waitingInQueueOrder
+    .slice(0, AUTO_FILL_POOL_SIZE)
+    .filter((player, index) => index < 4 || player.gamesPlayed <= mostGamesInNextFour);
+  const mustPlay = new Set(
+    nextFour
+      .filter(
+        (player, index) =>
+          index < 2 ||
+          getWaitMinutes(player.waitStartedAt) >= MAX_WAIT_PRIORITY_MINUTES ||
+          pool.slice(4).some((replacement) => player.gamesPlayed < replacement.gamesPlayed),
+      )
+      .map((player) => player.id),
+  );
+
+  const candidates = combinations(pool, 4).filter((group) =>
+    [...mustPlay].every((id) => group.some((player) => player.id === id)),
+  );
+
+  const scored = candidates.map((group) => {
+    const balanced = getBestBalancedTeams(group as [Player, Player, Player, Player], recent.partnerKeys);
+    const skipped = nextFour.filter((player) => !group.includes(player));
+    let repeatMatchmates = 0;
+    for (let i = 0; i < group.length; i += 1) {
+      for (let j = i + 1; j < group.length; j += 1) {
+        if (recent.matchmateKeys.has(getPartnerKey(group[i].id, group[j].id))) {
+          repeatMatchmates += 1;
+        }
+      }
+    }
+    return {
+      balanced,
+      skipped,
+      repeatMatchmates,
+      cost: balanced.cost + skipped.length * SKIP_PENALTY + repeatMatchmates * REPEAT_MATCHMATE_PENALTY,
+    };
+  });
+
+  scored.sort((a, b) => a.cost - b.cost || a.skipped.length - b.skipped.length);
+  const best = scored[0];
+  const [teamA, teamB] = best.balanced.pairing;
+  return {
+    players: [teamA[0], teamA[1], teamB[0], teamB[1]] as [Player, Player, Player, Player],
+    gap: best.balanced.gap,
+    repeatedPartners: best.balanced.repeatedPartners,
+    repeatMatchmates: best.repeatMatchmates,
+    skipped: best.skipped,
+  };
+};

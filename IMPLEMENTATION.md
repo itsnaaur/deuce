@@ -77,7 +77,7 @@ Database name: `deuce-db` (see `src/lib/db.ts`).
 | Field | Meaning |
 |-------|---------|
 | `skillMode` | `recreational` \| `competitive` — which skill dropdown applies when adding players. |
-| `courtCount` | Number of courts (1–10); courts are created/removed to match. |
+| `courtCount` | Number of courts (1–20). Courts are added at the lowest free number and removed highest-first; a court with a live match is never removed. |
 | `randomStartUsed` | After **Shuffle first round**, set so shuffle cannot run again in that session state. |
 
 ### 3.4 `SessionMatch`

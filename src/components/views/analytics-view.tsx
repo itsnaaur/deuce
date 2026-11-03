@@ -121,7 +121,8 @@ export function AnalyticsView() {
             >
               <option value="active">{activeSession ? `${activeSession.name} (active)` : "Active session (none)"}</option>
               <option value="all">All sessions</option>
-              {sessions.map((session) => (
+              {/* The active session is already the first option, so don't list it twice. */}
+              {sessions.filter((session) => session.status !== "active").map((session) => (
                 <option key={session.id} value={session.id}>
                   {session.name} ({session.status})
                 </option>
