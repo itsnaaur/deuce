@@ -1,103 +1,161 @@
 # Deuce
 
-Deuce is an offline-first badminton session management PWA for organizers running club nights, queue rotations, and live courts.
+**Live:** [deuce-psi.vercel.app](https://deuce-psi.vercel.app)
 
-It focuses on fair queueing, fast court operations, session-based history, and tactical visibility across mobile, tablet, and desktop.
+Deuce is an offline-first web app for running badminton club nights. One organiser checks players in, keeps a fair rotation going across several courts, records scores, and sees who's winning — all on a phone, tablet or laptop, with no account and no server.
+
+Everything is stored in the browser on the device you use (IndexedDB). Nothing is sent anywhere, and the app keeps working without a connection once it has loaded.
+
+## How a session works
+
+1. **Roster** — add everyone who turned up, with gender and skill level. Set each player to **Playing**, **Break** or **Left** as the night goes on.
+2. **Dashboard** — start a session. You can keep last week's roster or start fresh.
+3. **Courts** — fill each court by picking players or tapping **Auto-fill**, start the match, then enter the score when it ends.
+4. **Stats** — leaderboard and match history for the current session, any past session, or all sessions.
 
 ## Features
 
-- Session lifecycle (`Start session` / `End session`) with per-session history
-- Fair queue ordering with:
-  - Priority score: `(gamesPlayed * 100) - waitMinutes`
-  - 30-minute anti-stagnation override
-- Auto-fill matchmaker:
-  - Picks top-priority players
-  - Balances teams by non-linear team power
-  - Shows fairness score and "Why Them?" badges
-  - Guards against race conflicts before start
-- Court operations:
-  - Assign/remove players
-  - Start/end match
-  - Score input + duration tracking
-- Dashboard:
-  - Live stats, next-up queue, quick actions
-  - Win streaks, Giant Killer, Session MVP
-- Analytics:
-  - Session-filtered leaderboard (win rate)
-  - Match history with score and duration
-- PWA support (enabled in production build)
-- IndexedDB persistence via Dexie (works offline)
+### Roster
+- Quick add with validation: names are required, up to 24 characters, and must be unique (case-insensitive)
+- Rapid adds are queued in order, so tapping Add quickly never drops a player
+- Sorted A–Z, with Edit (name, gender, level) and Remove (with confirmation; blocked while the player is on court)
+- Two skill modes: **Recreational** (Beginner / Intermediate / Advanced) and **Competitive** (A–K)
+- Court count setting and a one-time **Shuffle first round** (needs 10+ available players)
 
-## Tech Stack
+### Fair queue
+Players waiting to play are ordered by:
+1. Anyone who has waited **30+ minutes** jumps to the front
+2. Priority score `gamesPlayed × 100 − minutesWaited` (fewer games first, then longest wait)
+3. Ties broken by games played, wait start time, skill level, then name
 
-- Next.js 16 (App Router) + React 19
-- Tailwind CSS 4
-- Dexie + dexie-react-hooks
-- Framer Motion
-- `@ducanh2912/next-pwa`
+Players on **Break** or marked **Left**, and anyone already on a court, are left out of the queue.
 
-## Getting Started
+### Courts and Auto-fill
+- Build Team A vs Team B per court; the same player can't be placed twice
+- **Auto-fill** takes the front of the queue and fills only the open spots, keeping anyone you placed by hand
+- On an empty court it picks the most balanced split using a non-linear skill "power" curve, and avoids pairing a player with their partner from their last game when the teams stay balanced
+- The suggestion shows a fairness percentage and badges (**Fresh**, **Longest Wait**) before you confirm
+- **Start match** unlocks once all four spots are filled; Remove is hidden while a match is live
+- **End match** asks for both scores (0–99), shows each team's players, and asks before saving a level score as a draw
+- The screen is kept awake during a session where the browser supports it (Wake Lock API)
+
+### Dashboard
+- Roster, active, waiting and live-court counts
+- Next four players up
+- Top three on the leaderboard
+- Live highlights: win streaks (3+), **Giant Killer** (biggest upset by skill) and **Session MVP** (best point spread)
+
+### Stats
+- Leaderboard by win rate, with medals only for players who have won
+- Match history with teams, score, winner and duration
+- Filter by session or view all sessions
+- **Reset memory** erases all local data on this device (with confirmation)
+
+### Layouts and install
+- Phones, tablets and laptops: bottom tab bar and stacked courts, with a slide-up queue sheet
+- Wide desktop (1536px+): collapsible sidebar, one court at a time with tabs, and a live side panel
+- Installable as an app (PWA) on Android, iOS (Add to Home Screen) and desktop browsers
+
+## Tech stack
+
+| Area | Choice |
+|------|--------|
+| Framework | Next.js 16 (App Router), React 19, TypeScript |
+| Styling | Tailwind CSS 4 |
+| Storage | Dexie (IndexedDB) with `dexie-react-hooks` for live queries |
+| Motion | Framer Motion |
+| PWA | `@ducanh2912/next-pwa` (Workbox service worker, production builds only) |
+| Fonts | Sora and IBM Plex Sans via `next/font` (self-hosted at build time) |
+| Hosting | Vercel |
+
+## Getting started
 
 ### Prerequisites
+- Node.js **20.9 or newer** (required by Next.js 16)
+- npm 10+
 
-- Node.js 20+ recommended
-- npm 10+ recommended
-
-### Install
+### Install and run
 
 ```bash
 npm install
 ```
 
-### Development
-
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open [http://localhost:3000](http://localhost:3000).
 
-> Note: PWA service worker is intentionally disabled in development to avoid cache interference.
-
-### Production (PWA test mode)
+The service worker is disabled in development so cached files don't get in the way. To test the installable app and offline mode, run a production build:
 
 ```bash
 npm run build
+```
+
+```bash
 npm run start
 ```
 
-Then verify installability and service worker in browser DevTools (`Application` tab).
+Then check **Application → Service workers** and **Manifest** in your browser's DevTools.
 
-## Project Structure
+### Scripts
+
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | Start the dev server (webpack mode) |
+| `npm run build` | Production build (webpack mode, so the PWA plugin runs) |
+| `npm run start` | Serve the production build |
+| `npm run lint` | Run ESLint |
+| `npm run clean` | Delete the `.next` folder |
+
+## Project structure
 
 ```text
 src/
   app/
     (app)/
-      page.tsx            # Dashboard
-      queue/page.tsx      # The Roster
-      war-room/page.tsx   # Courts
-      analytics/page.tsx  # Analytics
+      page.tsx              # Dashboard
+      queue/page.tsx        # Roster
+      war-room/page.tsx     # Courts
+      analytics/page.tsx    # Stats
+    layout.tsx              # Fonts, metadata, icons
+    manifest.ts             # PWA manifest
   components/
+    views/                  # One view component per page
+    badminton-court.tsx     # Court diagram, slots and match buttons
+    queue/                  # Waiting list and queue sheet
+    navigation/             # Tab bar, sidebar, app shell
+    session/                # Start-session modal, live side panel
   hooks/
+    use-deuce-session.ts    # All reads and writes: players, courts, sessions, matches
   lib/
+    db.ts                   # Dexie schema (database: deuce-db)
+    queue.ts                # Queue ordering and team balancing
+    skill.ts                # Skill values and power curve
+    types.ts                # Shared types
 public/
-  branding/
+  branding/                 # Logos used in the app
+  icons/                    # App and home-screen icons
+vercel.json                 # Security and caching headers
 ```
 
-## Scripts
+## Data and privacy
 
-- `npm run dev` - start local dev server (webpack mode)
-- `npm run build` - production build
-- `npm run start` - run production server
-- `npm run lint` - run eslint
-- `npm run clean` - remove `.next`
+- All data lives in IndexedDB in the browser you use. Each phone, tablet or browser has its own separate copy, and nothing syncs between devices.
+- Clearing the browser's site data, or using **Reset memory**, deletes everything.
+- The app asks the browser for persistent storage to reduce the chance of the browser evicting data (iOS can still clear it after long inactivity).
 
-## Security Notes
+## Security
 
-- Dependency audit is clean for production install (`npm audit --omit=dev`).
-- `.env*` files are gitignored by default.
+- No backend, accounts, API keys or environment variables.
+- Production responses send a Content-Security-Policy (same-origin only), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, a strict Referrer-Policy and a Permissions-Policy that turns off camera, microphone, location, payment and USB. See [`vercel.json`](vercel.json).
+- `.env*` files are gitignored.
+- `npm audit --omit=dev` reports no critical or high issues. The remaining low/moderate advisories come from the build-time PWA tooling (Workbox) and aren't shipped to the browser.
 
-## Documentation
+## Deployment
 
-- Implementation details: `IMPLEMENTATION.md`
+Pushes to `main` deploy to production on Vercel. Every other branch gets a preview deployment, which is behind Vercel's login protection.
+
+## Further reading
+
+- [`IMPLEMENTATION.md`](IMPLEMENTATION.md) — data model, queue rules and court layout in more detail
