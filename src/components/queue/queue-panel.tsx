@@ -54,7 +54,7 @@ export function QueuePanel({
                       {player.name}
                     </p>
                     <p className={`text-[11px] ${isLongWait ? "text-amber-800" : "text-(--text-2)"}`}>
-                      {player.gamesPlayed} games · {waitMinutes} min
+                      {player.gamesPlayed} {player.gamesPlayed === 1 ? "game" : "games"} · {waitMinutes} min
                     </p>
                   </div>
                   <span
@@ -73,7 +73,6 @@ export function QueuePanel({
             return (
               <motion.div
                 key={player.id}
-                layoutId={`queue-player-${player.id}`}
                 layout
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -86,7 +85,7 @@ export function QueuePanel({
                     {player.name}
                   </p>
                   <p className={`text-[11px] ${isLongWait ? "text-amber-800" : "text-(--text-2)"}`}>
-                    {player.gamesPlayed} games · {waitMinutes} min
+                    {player.gamesPlayed} {player.gamesPlayed === 1 ? "game" : "games"} · {waitMinutes} min
                   </p>
                 </div>
                 <span

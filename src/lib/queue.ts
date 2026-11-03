@@ -59,7 +59,16 @@ export const sortPlayersForQueue = (players: Player[]) =>
     return a.name.localeCompare(b.name);
   });
 
-export const getBestBalancedTeams = (players: [Player, Player, Player, Player]) => {
+export const getPartnerKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+// Roughly one skill step in team power; enough to prefer new partners when teams are similarly balanced,
+// without forcing a lopsided match just to avoid a repeat.
+export const REPEAT_PARTNER_PENALTY = 4;
+
+export const getBestBalancedTeams = (
+  players: [Player, Player, Player, Player],
+  recentPartnerKeys: ReadonlySet<string> = new Set(),
+) => {
   const [p1, p2, p3, p4] = players;
   const pairings: Array<[[Player, Player], [Player, Player]]> = [
     [[p1, p2], [p3, p4]],
@@ -71,15 +80,21 @@ export const getBestBalancedTeams = (players: [Player, Player, Player, Player]) 
     const [teamA, teamB] = pairing;
     const teamAScore = getSkillPowerValue(teamA[0].skillLevel) + getSkillPowerValue(teamA[1].skillLevel);
     const teamBScore = getSkillPowerValue(teamB[0].skillLevel) + getSkillPowerValue(teamB[1].skillLevel);
+    const gap = Math.abs(teamAScore - teamBScore);
+    const repeatedPartners = [teamA, teamB].filter((team) =>
+      recentPartnerKeys.has(getPartnerKey(team[0].id, team[1].id)),
+    ).length;
     return {
       pairing,
-      gap: Math.abs(teamAScore - teamBScore),
+      gap,
       teamAScore,
       teamBScore,
+      repeatedPartners,
+      cost: gap + repeatedPartners * REPEAT_PARTNER_PENALTY,
     };
   });
 
-  scored.sort((a, b) => a.gap - b.gap);
+  scored.sort((a, b) => a.cost - b.cost || a.gap - b.gap);
   return scored[0];
 };
 

@@ -21,6 +21,7 @@
 /public/sw.js
 /public/workbox-*.js
 /public/worker-*.js
+/public/swe-worker-*.js
 
 # production
 /build
@@ -53,3 +54,6 @@ terminals/
 # local source design assets (tracked copies live in /public/branding)
 /DEUCE ICON LOGO.png
 /DEUCE WORD LOGO.png
+/Branding.png
+/Deuce Mobile Logo.png
+/apple-icon.png

@@ -53,7 +53,9 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
   }, [playerById, slots]);
 
   const getPlayer = (position: number) => slotPlayers.get(position);
-  const isCourtEmpty = slots.every((slot) => !slot.playerId);
+  const filledCount = slots.filter((slot) => Boolean(slot.playerId)).length;
+  const isCourtFull = filledCount === slots.length;
+  const openSlots = slots.length - filledCount;
 
   return (
     <article
@@ -253,7 +255,7 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3 md:gap-3">
           <button
             type="button"
-            disabled={disabled || !isCourtEmpty || waitingPlayers.length < 4}
+            disabled={disabled || isCourtFull || waitingPlayers.length < openSlots}
             onClick={onAutoFill}
             className={`btn-canvas-ghost w-full ${
               isUmpire ? "py-2.5 text-sm sm:py-3 sm:text-base md:py-3.5 md:text-base lg:py-4 lg:text-lg" : "py-3 text-sm"
@@ -263,7 +265,7 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
           </button>
           <button
             type="button"
-            disabled={disabled || isActive || startPending}
+            disabled={disabled || isActive || startPending || !isCourtFull}
             onClick={onStart}
             className={`btn-court-primary w-full ${
               isUmpire ? "py-2.5 text-sm sm:py-3 sm:text-base md:py-3.5 md:text-base lg:py-4 lg:text-lg" : "py-3 text-sm"
@@ -282,6 +284,14 @@ export const BadmintonCourtView = memo(function BadmintonCourtView({
             End match
           </button>
         </div>
+        {!disabled && !isActive && !isCourtFull ? (
+          <p className="mt-2 text-center text-xs text-(--text-muted)">
+            {filledCount} of 4 players placed.{" "}
+            {waitingPlayers.length >= openSlots
+              ? "Pick players or use Auto-fill to fill the rest."
+              : `Only ${waitingPlayers.length} waiting — not enough to fill this court.`}
+          </p>
+        ) : null}
       </footer>
     </article>
   );
@@ -376,21 +386,26 @@ function TeamMemberSlot({
           >
             {player.skillLevel} · {player.gender}
           </p>
+          {!disabled && (
           <button
             type="button"
-            disabled={disabled}
             onClick={() => onClear(position)}
             className="mt-1 rounded-md bg-black/25 px-1.5 py-0.5 text-[9px] font-medium text-white transition hover:bg-black/35 disabled:cursor-not-allowed disabled:opacity-50 md:px-2 md:text-[10px]"
           >
             Remove
           </button>
+          )}
         </div>
       );
     }
 
     return (
+      // No shared layoutId here: each court renders a phone and a desktop copy, and duplicate
+      // layoutIds make framer-motion hide one of them (opacity 0), often the visible one.
       <motion.div
-        layoutId={`queue-player-${player.id}`}
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18 }}
         className="min-w-0 rounded-md bg-white/10 px-1.5 py-1 md:px-2 md:py-1.5"
       >
         <p
@@ -405,14 +420,15 @@ function TeamMemberSlot({
         >
           {player.skillLevel} · {player.gender}
         </p>
+        {!disabled && (
         <button
           type="button"
-          disabled={disabled}
           onClick={() => onClear(position)}
           className="mt-1 rounded-md bg-black/25 px-1.5 py-0.5 text-[9px] font-medium text-white transition hover:bg-black/35 disabled:cursor-not-allowed disabled:opacity-50 md:px-2 md:text-[10px]"
         >
           Remove
         </button>
+        )}
       </motion.div>
     );
   }
