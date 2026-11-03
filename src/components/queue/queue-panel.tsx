@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePerformanceMode } from "@/hooks/use-performance-mode";
 import type { Player } from "@/lib/types";
@@ -27,9 +27,13 @@ export function QueuePanel({
   const { reducedMotion } = usePerformanceMode();
   const visiblePlayers = waitingPlayers.slice(0, visibleCount);
 
-  useEffect(() => {
+  // Reset the visible count when the queue size or page size changes, during render rather than in an effect.
+  const resetKey = `${initialVisibleCount}:${waitingPlayers.length}`;
+  const [shownForKey, setShownForKey] = useState(resetKey);
+  if (shownForKey !== resetKey) {
+    setShownForKey(resetKey);
     setVisibleCount(initialVisibleCount);
-  }, [initialVisibleCount, waitingPlayers.length]);
+  }
 
   return (
     <div className={className}>

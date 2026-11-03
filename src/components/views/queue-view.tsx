@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { QueuePanel } from "@/components/queue/queue-panel";
 import {
   DEUCE_GENDERS,
@@ -57,13 +57,19 @@ export function QueueView() {
     }
   };
 
-  useEffect(() => {
-    setCourtCountInput(String(settings?.courtCount ?? 2));
-  }, [settings?.courtCount]);
-
-  useEffect(() => {
+  // Keep the court field in step with saved settings, and collapse the roster when its size changes.
+  // Both adjust state during render instead of in an effect.
+  const savedCourtCount = settings?.courtCount ?? 2;
+  const [courtCountShownFor, setCourtCountShownFor] = useState(savedCourtCount);
+  if (courtCountShownFor !== savedCourtCount) {
+    setCourtCountShownFor(savedCourtCount);
+    setCourtCountInput(String(savedCourtCount));
+  }
+  const [rosterShownFor, setRosterShownFor] = useState(players.length);
+  if (rosterShownFor !== players.length) {
+    setRosterShownFor(players.length);
     setVisibleRosterCount(10);
-  }, [players.length]);
+  }
 
   const commitCourtCount = () => {
     const parsed = Number.parseInt(courtCountInput, 10);

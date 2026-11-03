@@ -403,8 +403,9 @@ function TeamMemberSlot({
       // No shared layoutId here: each court renders a phone and a desktop copy, and duplicate
       // layoutIds make framer-motion hide one of them (opacity 0), often the visible one.
       <motion.div
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
+        // Slide only, never fade from 0: if the animation is paused (background tab), players stay visible.
+        initial={{ y: 4 }}
+        animate={{ y: 0 }}
         transition={{ duration: 0.18 }}
         className="min-w-0 rounded-md bg-white/10 px-1.5 py-1 md:px-2 md:py-1.5"
       >
