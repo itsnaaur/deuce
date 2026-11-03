@@ -339,8 +339,11 @@ export function useDeuceSession() {
       if (!court || court.isActive) {
         return;
       }
-      const isCourtEmpty = court.slots.every((slot) => !slot.playerId);
-      if (!isCourtEmpty) {
+      // Players already placed by hand must stay where they are; auto-fill only fills open slots.
+      const keepsPlacedPlayers = court.slots.every(
+        (slot) => !slot.playerId || slot.playerId === playerIds[slot.position - 1],
+      );
+      if (!keepsPlacedPlayers) {
         return;
       }
 

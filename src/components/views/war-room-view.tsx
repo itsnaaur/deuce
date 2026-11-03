@@ -8,8 +8,19 @@ import { QueueDrawer } from "@/components/queue/queue-drawer";
 import { LiveSidePanel } from "@/components/session/live-side-panel";
 import { StartSessionModal } from "@/components/session/start-session-modal";
 import { useDeuceSession } from "@/hooks/use-deuce-session";
-import { MAX_TEAM_POWER_GAP, getBestBalancedTeams, getPriorityScore, getWaitMinutes } from "@/lib/queue";
+import { MAX_TEAM_POWER_GAP, getBestBalancedTeams, getPartnerKey, getWaitMinutes } from "@/lib/queue";
+import { getSkillPowerValue } from "@/lib/skill";
 import type { Court, Player } from "@/lib/types";
+
+const MAX_SCORE = 99;
+
+const parseScore = (value: string) => {
+  if (!/^\d{1,2}$/.test(value.trim())) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return parsed <= MAX_SCORE ? parsed : undefined;
+};
 
 type SuggestionBadge = "Longest Wait" | "Fresh";
 type MatchSuggestion = {
@@ -19,6 +30,7 @@ type MatchSuggestion = {
   badgesByPlayerId: Record<string, SuggestionBadge[]>;
   fairnessScore: number;
   prioritizesWaitTime: boolean;
+  keepsPlacedPlayers: boolean;
   reason: string;
 };
 
@@ -113,9 +125,16 @@ export function WarRoomView() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [courtIndex, setCourtIndex] = useState(0);
   const [suggestion, setSuggestion] = useState<MatchSuggestion | null>(null);
-  const [endMatchTarget, setEndMatchTarget] = useState<{ courtId: string; courtLabel: string } | null>(null);
-  const [scoreA, setScoreA] = useState("21");
-  const [scoreB, setScoreB] = useState("18");
+  const [endMatchTarget, setEndMatchTarget] = useState<{
+    courtId: string;
+    courtLabel: string;
+    teamALabel: string;
+    teamBLabel: string;
+  } | null>(null);
+  // Start blank so a quick tap on Save can never record a result that didn't happen.
+  const [scoreA, setScoreA] = useState("");
+  const [scoreB, setScoreB] = useState("");
+  const [confirmDraw, setConfirmDraw] = useState(false);
   const [endMatchError, setEndMatchError] = useState<string | null>(null);
   const [isEndingMatch, setIsEndingMatch] = useState(false);
   const [autoFillError, setAutoFillError] = useState<string | null>(null);
@@ -139,9 +158,43 @@ export function WarRoomView() {
     courts,
     activeSession,
     startSession,
+    scopedSessionMatches,
   } = useDeuceSession();
 
   const courtTotal = Math.max(courts.length, 1);
+
+  // Each player's partner from their most recent game this session, so auto-fill can avoid repeats.
+  const recentPartnerKeys = useMemo(() => {
+    const seen = new Set<string>();
+    const keys = new Set<string>();
+    for (const match of scopedSessionMatches) {
+      for (const team of [match.teamAPlayerIds, match.teamBPlayerIds]) {
+        const [a, b] = team;
+        if (!seen.has(a) || !seen.has(b)) {
+          keys.add(getPartnerKey(a, b));
+        }
+        seen.add(a);
+        seen.add(b);
+      }
+    }
+    return keys;
+  }, [scopedSessionMatches]);
+
+  const openEndMatch = (court: Court) => {
+    const nameAt = (position: number) => {
+      const id = court.slots.find((slot) => slot.position === position)?.playerId;
+      return (id && stablePlayerById.get(id)?.name) || "?";
+    };
+    setScoreA("");
+    setScoreB("");
+    setConfirmDraw(false);
+    setEndMatchTarget({
+      courtId: court.id,
+      courtLabel: court.label,
+      teamALabel: `${nameAt(1)} / ${nameAt(2)}`,
+      teamBLabel: `${nameAt(3)} / ${nameAt(4)}`,
+    });
+  };
 
   const safeCourtIndex = Math.min(courtIndex, Math.max(0, sortedCourts.length - 1));
   const stablePlayerById = useMemo(() => {
@@ -195,20 +248,46 @@ export function WarRoomView() {
       }
     },
     onAutoFill: (court: Court) => {
-      const isEmpty = court.slots.every((slot) => !slot.playerId);
-      if (!isEmpty || court.isActive || waitingPlayers.length < 4) {
+      const openPositions = court.slots.filter((slot) => !slot.playerId).map((slot) => slot.position);
+      if (openPositions.length === 0 || court.isActive || waitingPlayers.length < openPositions.length) {
         return;
       }
 
-      const topPriority = waitingPlayers.slice(0, 4) as [Player, Player, Player, Player];
-      const balanced = getBestBalancedTeams(topPriority);
-      const teamA = balanced.pairing[0];
-      const teamB = balanced.pairing[1];
-      const picks = [teamA[0], teamA[1], teamB[0], teamB[1]] as [Player, Player, Player, Player];
-      const minGames = Math.min(...topPriority.map((p) => p.gamesPlayed));
-      const longWaiters = topPriority.filter((p) => getWaitMinutes(p.waitStartedAt) >= 20);
+      const fills = waitingPlayers.slice(0, openPositions.length);
+      const isFullFill = openPositions.length === court.slots.length;
+      let picks: [Player, Player, Player, Player];
+      let gap: number;
+      let avoidedRepeatPartners = false;
+
+      if (isFullFill) {
+        const topPriority = fills as [Player, Player, Player, Player];
+        const balanced = getBestBalancedTeams(topPriority, recentPartnerKeys);
+        const plainBalanced = getBestBalancedTeams(topPriority);
+        const teamA = balanced.pairing[0];
+        const teamB = balanced.pairing[1];
+        picks = [teamA[0], teamA[1], teamB[0], teamB[1]];
+        gap = balanced.gap;
+        avoidedRepeatPartners = plainBalanced.repeatedPartners > balanced.repeatedPartners;
+      } else {
+        // Keep the host's hand-placed players where they are and fill the open spots in queue order.
+        const queue = [...fills];
+        const byPosition = court.slots.map((slot) =>
+          slot.playerId ? stablePlayerById.get(slot.playerId) : queue.shift(),
+        );
+        if (byPosition.some((player) => !player)) {
+          setAutoFillError("A placed player is missing from the roster. Remove them and try again.");
+          return;
+        }
+        picks = byPosition as [Player, Player, Player, Player];
+        const teamPower = (a: Player, b: Player) =>
+          getSkillPowerValue(a.skillLevel) + getSkillPowerValue(b.skillLevel);
+        gap = Math.abs(teamPower(picks[0], picks[1]) - teamPower(picks[2], picks[3]));
+      }
+
+      const minGames = Math.min(...fills.map((p) => p.gamesPlayed));
+      const longWaiters = fills.filter((p) => getWaitMinutes(p.waitStartedAt) >= 20);
       const badgesByPlayerId: Record<string, SuggestionBadge[]> = {};
-      for (const player of topPriority) {
+      for (const player of fills) {
         const badges: SuggestionBadge[] = [];
         if (longWaiters.some((p) => p.id === player.id)) {
           badges.push("Longest Wait");
@@ -219,17 +298,21 @@ export function WarRoomView() {
         badgesByPlayerId[player.id] = badges;
       }
 
-      const fairnessScore = Math.max(
-        0,
-        Math.min(100, Math.round((1 - balanced.gap / MAX_TEAM_POWER_GAP) * 100)),
-      );
-      const prioritizesWaitTime = balanced.gap >= 8;
+      const fairnessScore = Math.max(0, Math.min(100, Math.round((1 - gap / MAX_TEAM_POWER_GAP) * 100)));
+      const prioritizesWaitTime = gap >= 8;
 
-      const longestWaiters = [...topPriority]
-        .sort((a, b) => a.waitStartedAt - b.waitStartedAt)
-        .slice(0, 2);
-      const waitMins = longestWaiters.map((player) => getWaitMinutes(player.waitStartedAt));
-      const reason = `${longestWaiters[0].name} and ${longestWaiters[1].name} waited ${waitMins[0]} and ${waitMins[1]} min; teams balanced by skill gap ${balanced.gap}.`;
+      const longestWaiters = [...fills].sort((a, b) => a.waitStartedAt - b.waitStartedAt).slice(0, 2);
+      const waitText = longestWaiters
+        .map((player) => `${player.name} (${getWaitMinutes(player.waitStartedAt)} min)`)
+        .join(" and ");
+      const reasonParts = [
+        isFullFill
+          ? `Next up in the queue. Longest waiting: ${waitText}.`
+          : `Fills ${openPositions.length} open ${openPositions.length === 1 ? "spot" : "spots"} from the front of the queue.`,
+      ];
+      if (avoidedRepeatPartners) {
+        reasonParts.push("Partners were mixed up so nobody repeats their last partner.");
+      }
 
       setSuggestion({
         courtId: court.id,
@@ -238,11 +321,12 @@ export function WarRoomView() {
         badgesByPlayerId,
         fairnessScore,
         prioritizesWaitTime,
-        reason,
+        keepsPlacedPlayers: !isFullFill,
+        reason: reasonParts.join(" "),
       });
       setAutoFillError(null);
     },
-    onOpenEndMatch: (court: Court) => setEndMatchTarget({ courtId: court.id, courtLabel: court.label }),
+    onOpenEndMatch: openEndMatch,
     sessionReady: Boolean(activeSession),
     startingCourtId,
   };
@@ -352,6 +436,8 @@ export function WarRoomView() {
           <div className="flex flex-col gap-8 md:gap-12 lg:gap-14">
             <CourtList {...shared} variant="umpire" />
           </div>
+          {/* Room to scroll the last court's buttons above the floating Queue button and tab bar. */}
+          <div aria-hidden="true" className="h-36 md:h-32" />
         </div>
 
         <button
@@ -418,7 +504,7 @@ export function WarRoomView() {
                 onClear={(position) => void clearSlot(activeCourt.id, position)}
                 onAutoFill={() => shared.onAutoFill(activeCourt)}
                 onStart={() => void shared.startMatch(activeCourt.id)}
-                onEnd={() => setEndMatchTarget({ courtId: activeCourt.id, courtLabel: activeCourt.label })}
+                onEnd={() => openEndMatch(activeCourt)}
                 startPending={startingCourtId === activeCourt.id}
               />
             ) : (
@@ -476,12 +562,6 @@ export function WarRoomView() {
               })}
             </div>
             <p className="mt-2 text-xs text-(--text-2)">{suggestion.reason}</p>
-            <p className="mt-1 text-[11px] text-(--text-muted)">
-              Priority:{" "}
-              {suggestion.players
-                .map((p) => `${p.name} (${getPriorityScore(p)})`)
-                .join(", ")}
-            </p>
             <div
               className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-semibold ${
                 suggestion.prioritizesWaitTime
@@ -491,7 +571,11 @@ export function WarRoomView() {
             >
               Fairness {suggestion.fairnessScore}%
             </div>
-            {suggestion.prioritizesWaitTime ? (
+            {suggestion.keepsPlacedPlayers ? (
+              <p className="mt-1 text-[11px] text-(--text-muted)">
+                Players you already placed stay on their teams.
+              </p>
+            ) : suggestion.prioritizesWaitTime ? (
               <p className="mt-1 text-[11px] text-amber-800">
                 Priority given to wait time over skill balance.
               </p>
@@ -552,30 +636,53 @@ export function WarRoomView() {
             </h2>
             <p className="mt-2 text-sm text-(--text-2)">Enter the final score.</p>
             <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold text-(--text-muted)">Score A</span>
+              <label className="flex min-w-0 flex-col gap-1">
+                <span className="truncate text-xs font-semibold text-(--text-muted)" title={endMatchTarget.teamALabel}>
+                  Team A · {endMatchTarget.teamALabel}
+                </span>
                 <input
-                  type="number"
-                  min={0}
-                  max={99}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={2}
+                  placeholder="–"
+                  autoFocus
                   value={scoreA}
-                  onChange={(e) => setScoreA(e.target.value)}
+                  onChange={(e) => {
+                    setScoreA(e.target.value.replace(/\D/g, ""));
+                    setConfirmDraw(false);
+                    setEndMatchError(null);
+                  }}
                   className="canvas-input w-full text-center tabular-nums"
                 />
               </label>
               <span className="pb-2 text-sm font-semibold text-(--text-muted)">vs</span>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold text-(--text-muted)">Score B</span>
+              <label className="flex min-w-0 flex-col gap-1">
+                <span className="truncate text-xs font-semibold text-(--text-muted)" title={endMatchTarget.teamBLabel}>
+                  Team B · {endMatchTarget.teamBLabel}
+                </span>
                 <input
-                  type="number"
-                  min={0}
-                  max={99}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={2}
+                  placeholder="–"
                   value={scoreB}
-                  onChange={(e) => setScoreB(e.target.value)}
+                  onChange={(e) => {
+                    setScoreB(e.target.value.replace(/\D/g, ""));
+                    setConfirmDraw(false);
+                    setEndMatchError(null);
+                  }}
                   className="canvas-input w-full text-center tabular-nums"
                 />
               </label>
             </div>
+            {confirmDraw ? (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Both teams have {scoreA}. Badminton games don&apos;t usually end level — check the score, or tap
+                &ldquo;Save as draw&rdquo; if the game was stopped early.
+              </p>
+            ) : null}
             <div className="mt-5 flex gap-3">
               <button
                 type="button"
@@ -595,9 +702,17 @@ export function WarRoomView() {
                   if (isEndingMatch) {
                     return;
                   }
+                  const parsedA = parseScore(scoreA);
+                  const parsedB = parseScore(scoreB);
+                  if (parsedA === undefined || parsedB === undefined) {
+                    setEndMatchError(`Enter a score from 0 to ${MAX_SCORE} for both teams.`);
+                    return;
+                  }
+                  if (parsedA === parsedB && !confirmDraw) {
+                    setConfirmDraw(true);
+                    return;
+                  }
                   setIsEndingMatch(true);
-                  const parsedA = Math.max(0, Number(scoreA) || 0);
-                  const parsedB = Math.max(0, Number(scoreB) || 0);
                   const saved = await endMatch(endMatchTarget.courtId, parsedA, parsedB);
                   if (!saved) {
                     setEndMatchError("Unable to end this match right now. Please retry.");
@@ -609,7 +724,7 @@ export function WarRoomView() {
                   setEndMatchTarget(null);
                 }}
               >
-                {isEndingMatch ? "Saving..." : "Save result"}
+                {isEndingMatch ? "Saving..." : confirmDraw ? "Save as draw" : "Save result"}
               </button>
             </div>
             {endMatchError ? (

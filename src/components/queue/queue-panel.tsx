@@ -73,7 +73,6 @@ export function QueuePanel({
             return (
               <motion.div
                 key={player.id}
-                layoutId={`queue-player-${player.id}`}
                 layout
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
