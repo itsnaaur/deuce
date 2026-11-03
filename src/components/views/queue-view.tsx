@@ -3,12 +3,25 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { QueuePanel } from "@/components/queue/queue-panel";
-import { DEUCE_GENDERS, useDeuceSession } from "@/hooks/use-deuce-session";
-import type { Gender, SkillLevel } from "@/lib/types";
+import {
+  DEUCE_GENDERS,
+  MAX_PLAYER_NAME_LENGTH,
+  getPlayerStatus,
+  useDeuceSession,
+  type PlayerStatus,
+} from "@/hooks/use-deuce-session";
+import type { Gender, Player, SkillLevel } from "@/lib/types";
+
+const STATUS_OPTIONS: { value: PlayerStatus; label: string }[] = [
+  { value: "playing", label: "Playing" },
+  { value: "break", label: "Break" },
+  { value: "left", label: "Left" },
+];
 
 export function QueueView() {
   const [courtCountInput, setCourtCountInput] = useState("2");
   const [visibleRosterCount, setVisibleRosterCount] = useState(10);
+  const [addError, setAddError] = useState<string>();
   const {
     name,
     setName,
@@ -20,15 +33,27 @@ export function QueueView() {
     selectedSkillLevel,
     settings,
     players,
+    sortedPlayers,
+    playersOnCourt,
+    activeSession,
     waitingPlayers,
     updateSettings,
     syncCourtsCount,
     randomizeStartOrder,
     has10OrMore,
     addPlayer,
-    toggleActive,
-    toggleBreak,
+    updatePlayer,
+    removePlayer,
+    setPlayerStatus,
   } = useDeuceSession();
+
+  const submitAdd = async () => {
+    setAddError(undefined);
+    const error = await addPlayer();
+    if (error) {
+      setAddError(error);
+    }
+  };
 
   useEffect(() => {
     setCourtCountInput(String(settings?.courtCount ?? 2));
@@ -120,6 +145,11 @@ export function QueueView() {
           >
             Shuffle first round
           </button>
+          {!has10OrMore && !settings?.randomStartUsed && (
+            <p className="mt-2 text-center text-xs text-(--text-muted)">
+              Shuffle unlocks once 10 or more players are available.
+            </p>
+          )}
         </header>
 
         <section className="border-b border-(--border) py-8 md:py-10">
@@ -130,11 +160,23 @@ export function QueueView() {
           <div className="mt-4 grid gap-3">
             <input
               placeholder="Player name"
+              aria-label="Player name"
               className="canvas-input w-full"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void addPlayer()}
+              maxLength={MAX_PLAYER_NAME_LENGTH}
+              aria-invalid={Boolean(addError)}
+              aria-describedby={addError ? "add-player-error" : undefined}
+              onChange={(e) => {
+                setName(e.target.value);
+                setAddError(undefined);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && void submitAdd()}
             />
+            {addError && (
+              <p id="add-player-error" role="alert" className="text-sm font-medium text-red-700">
+                {addError}
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <select
                 className="canvas-input app-select w-full"
@@ -159,7 +201,11 @@ export function QueueView() {
                 ))}
               </select>
             </div>
-            <button type="button" className="btn-canvas-primary px-5 py-3 text-sm" onClick={() => void addPlayer()}>
+            <button
+              type="button"
+              className="btn-canvas-primary px-5 py-3 text-sm"
+              onClick={() => void submitAdd()}
+            >
               Add player
             </button>
           </div>
@@ -167,61 +213,219 @@ export function QueueView() {
 
         <section className="border-b border-(--border) py-8 md:py-10">
           <h2 className="font-display text-lg font-semibold text-(--accent-on-light) md:text-xl">Roster</h2>
-          <p className="mt-2 text-sm text-(--text-muted) md:text-base">Everyone checked in for tonight.</p>
+          <p className="mt-2 text-sm text-(--text-muted) md:text-base">
+            Everyone checked in for tonight, A–Z. Set each player to Playing, Break, or Left.
+          </p>
           <div className="mt-4 space-y-2">
-            {players.length === 0 ? (
+            {sortedPlayers.length === 0 ? (
               <p className="py-8 text-center text-sm text-(--text-muted)">No players yet.</p>
             ) : (
-              players.slice(0, visibleRosterCount).map((player) => (
-                <div
+              sortedPlayers.slice(0, visibleRosterCount).map((player) => (
+                <RosterRow
                   key={player.id}
-                  className="flex flex-col gap-3 rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-(--shadow-soft) sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-(--text)">{player.name}</p>
-                    <p className="text-xs text-(--text-2)">
-                      {player.skillLevel} · {player.gender} · {player.gamesPlayed} games
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <button
-                      type="button"
-                      className={`pill-toggle ${player.isActive ? "pill-toggle-on" : "pill-toggle-off"}`}
-                      onClick={() => void toggleActive(player)}
-                    >
-                      {player.isActive ? "Active" : "Off"}
-                    </button>
-                    <button
-                      type="button"
-                      className={`pill-toggle ${
-                        player.isOnBreak
-                          ? "bg-amber-100 text-amber-900 ring-1 ring-amber-200/80"
-                          : "pill-toggle-off"
-                      }`}
-                      onClick={() => void toggleBreak(player)}
-                    >
-                      {player.isOnBreak ? "Break" : "Here"}
-                    </button>
-                  </div>
-                </div>
+                  player={player}
+                  isOnCourt={playersOnCourt.has(player.id)}
+                  availableLevels={availableLevels}
+                  onStatusChange={(status) => void setPlayerStatus(player, status)}
+                  onSave={(changes) => updatePlayer(player, changes)}
+                  onRemove={() => removePlayer(player)}
+                />
               ))
             )}
-            {players.length > visibleRosterCount && (
+            {sortedPlayers.length > visibleRosterCount && (
               <button
                 type="button"
                 className="btn-canvas-ghost mt-2 w-full px-4 py-2.5 text-sm"
                 onClick={() => setVisibleRosterCount((current) => current + 10)}
               >
-                View more roster ({players.length - visibleRosterCount} remaining)
+                View more roster ({sortedPlayers.length - visibleRosterCount} remaining)
               </button>
             )}
           </div>
         </section>
 
         <section className="py-8 md:py-10">
+          {!activeSession && players.length > 0 && (
+            <p className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              The queue starts once you start a session on the Dashboard.
+            </p>
+          )}
           <QueuePanel waitingPlayers={waitingPlayers} title="Waiting" initialVisibleCount={10} visibleStep={10} />
         </section>
       </div>
+    </div>
+  );
+}
+
+function RosterRow({
+  player,
+  isOnCourt,
+  availableLevels,
+  onStatusChange,
+  onSave,
+  onRemove,
+}: {
+  player: Player;
+  isOnCourt: boolean;
+  availableLevels: SkillLevel[];
+  onStatusChange: (status: PlayerStatus) => void;
+  onSave: (changes: { name: string; gender: Gender; skillLevel: SkillLevel }) => Promise<string | undefined>;
+  onRemove: () => Promise<string | undefined>;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [draftName, setDraftName] = useState(player.name);
+  const [draftGender, setDraftGender] = useState<Gender>(player.gender);
+  const [draftLevel, setDraftLevel] = useState<SkillLevel>(player.skillLevel);
+  const [error, setError] = useState<string>();
+  const status = getPlayerStatus(player);
+  const levelOptions = availableLevels.includes(player.skillLevel)
+    ? availableLevels
+    : [player.skillLevel, ...availableLevels];
+
+  const startEditing = () => {
+    setDraftName(player.name);
+    setDraftGender(player.gender);
+    setDraftLevel(player.skillLevel);
+    setError(undefined);
+    setConfirmingRemove(false);
+    setIsEditing(true);
+  };
+
+  const save = async () => {
+    const result = await onSave({ name: draftName, gender: draftGender, skillLevel: draftLevel });
+    setError(result);
+    if (!result) {
+      setIsEditing(false);
+    }
+  };
+
+  const remove = async () => {
+    const result = await onRemove();
+    setError(result);
+    setConfirmingRemove(false);
+  };
+
+  return (
+    <div className="rounded-2xl border border-(--border) bg-(--surface) p-3 shadow-(--shadow-soft)">
+      {isEditing ? (
+        <div className="grid gap-2">
+          <input
+            aria-label={`Name for ${player.name}`}
+            className="canvas-input w-full"
+            value={draftName}
+            maxLength={MAX_PLAYER_NAME_LENGTH}
+            onChange={(e) => setDraftName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void save()}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              aria-label="Gender"
+              className="canvas-input app-select w-full"
+              value={draftGender}
+              onChange={(e) => setDraftGender(e.target.value as Gender)}
+            >
+              {DEUCE_GENDERS.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Skill level"
+              className="canvas-input app-select w-full"
+              value={draftLevel}
+              onChange={(e) => setDraftLevel(e.target.value as SkillLevel)}
+            >
+              {levelOptions.map((level) => (
+                <option key={level} value={level}>
+                  {level}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-canvas-ghost px-4 py-2 text-sm" onClick={() => setIsEditing(false)}>
+              Cancel
+            </button>
+            <button type="button" className="btn-canvas-primary px-4 py-2 text-sm" onClick={() => void save()}>
+              Save
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold text-(--text)">{player.name}</p>
+            <p className="text-xs text-(--text-2)">
+              {player.skillLevel} · {player.gender} · {player.gamesPlayed}{" "}
+              {player.gamesPlayed === 1 ? "game" : "games"}
+              {isOnCourt ? " · on court" : ""}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <div role="radiogroup" aria-label={`Status for ${player.name}`} className="flex gap-1">
+              {STATUS_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={status === option.value}
+                  className={`pill-toggle ${
+                    status !== option.value
+                      ? "pill-toggle-off"
+                      : option.value === "break"
+                        ? "bg-amber-100 text-amber-900 ring-1 ring-amber-200/80"
+                        : option.value === "left"
+                          ? "bg-slate-200 text-slate-700 ring-1 ring-slate-300"
+                          : "pill-toggle-on"
+                  }`}
+                  onClick={() => onStatusChange(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="pill-toggle pill-toggle-off" onClick={startEditing}>
+              Edit
+            </button>
+            {confirmingRemove ? (
+              <>
+                <button
+                  type="button"
+                  className="pill-toggle bg-red-600 text-white"
+                  onClick={() => void remove()}
+                >
+                  Confirm remove
+                </button>
+                <button
+                  type="button"
+                  className="pill-toggle pill-toggle-off"
+                  onClick={() => setConfirmingRemove(false)}
+                >
+                  Keep
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="pill-toggle pill-toggle-off text-red-700"
+                onClick={() => {
+                  setError(undefined);
+                  setConfirmingRemove(true);
+                }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {error && (
+        <p role="alert" className="mt-2 text-sm font-medium text-red-700">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

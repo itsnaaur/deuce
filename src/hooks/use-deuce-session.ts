@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, DEFAULT_SETTINGS, createEmptyCourt } from "@/lib/db";
 import { sortPlayersForQueue } from "@/lib/queue";
@@ -20,6 +20,13 @@ import type {
 
 const RECREATIONAL_LEVELS: SkillLevel[] = ["Beginner", "Intermediate", "Advanced"];
 const COMPETITIVE_LEVELS: SkillLevel[] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
+
+export const MAX_PLAYER_NAME_LENGTH = 24;
+
+export type PlayerStatus = "playing" | "break" | "left";
+
+export const getPlayerStatus = (player: Player): PlayerStatus =>
+  !player.isActive ? "left" : player.isOnBreak ? "break" : "playing";
 
 const uid = () => crypto.randomUUID();
 const normalizeSkillMode = (mode: SkillMode | LegacySkillMode | undefined): SkillMode => {
@@ -131,6 +138,11 @@ export function useDeuceSession() {
     );
   }, [activeSession, players, playersOnCourt]);
 
+  const sortedPlayers = useMemo(
+    () => [...players].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+    [players],
+  );
+
   const playerById = useMemo(
     () => new Map(players.map((player) => [player.id, player])),
     [players],
@@ -141,67 +153,150 @@ export function useDeuceSession() {
     [courts],
   );
 
-  const addPlayer = async () => {
-    const trimmed = name.trim();
+  // Queues adds in order so rapid taps can't race each other and drop or duplicate players.
+  const addQueue = useRef<Promise<unknown>>(Promise.resolve());
+
+  const validatePlayerName = async (
+    rawName: string,
+    excludeId?: string,
+  ): Promise<{ ok: true; name: string } | { ok: false; error: string }> => {
+    const trimmed = rawName.trim().replace(/\s+/g, " ");
     if (!trimmed) {
-      return;
+      return { ok: false, error: "Enter a player name." };
     }
-
-    const now = getNow();
-    const newPlayer: Player = {
-      id: uid(),
-      name: trimmed,
-      gender,
-      skillLevel: selectedSkillLevel,
-      isActive: true,
-      isOnBreak: false,
-      gamesPlayed: 0,
-      waitStartedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await db.players.add(newPlayer);
-    setName("");
+    if (trimmed.length > MAX_PLAYER_NAME_LENGTH) {
+      return { ok: false, error: `Keep names to ${MAX_PLAYER_NAME_LENGTH} characters or fewer.` };
+    }
+    const lower = trimmed.toLowerCase();
+    const existing = await db.players.toArray();
+    if (existing.some((p) => p.id !== excludeId && p.name.trim().toLowerCase() === lower)) {
+      return { ok: false, error: `${trimmed} is already on the roster.` };
+    }
+    return { ok: true, name: trimmed };
   };
 
-  const toggleActive = async (player: Player) => {
-    await db.players.update(player.id, {
-      isActive: !player.isActive,
-      updatedAt: getNow(),
+  const addPlayer = (): Promise<string | undefined> => {
+    // Capture the form values at tap time; the queued write must not read later state.
+    const submittedName = name;
+    const submittedGender = gender;
+    const submittedLevel = selectedSkillLevel;
+
+    const run = async (): Promise<string | undefined> => {
+      const result = await validatePlayerName(submittedName);
+      if (!result.ok) {
+        return result.error;
+      }
+
+      const now = getNow();
+      const newPlayer: Player = {
+        id: uid(),
+        name: result.name,
+        gender: submittedGender,
+        skillLevel: submittedLevel,
+        isActive: true,
+        isOnBreak: false,
+        gamesPlayed: 0,
+        waitStartedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      try {
+        await db.players.add(newPlayer);
+      } catch {
+        return `Couldn't save ${result.name}. Try again.`;
+      }
+      return undefined;
+    };
+
+    // Clear right away so the next name can be typed; restored below if the add fails.
+    setName("");
+    const pending = addQueue.current.then(run, run);
+    addQueue.current = pending.catch(() => undefined);
+    return pending.then((error) => {
+      if (error) {
+        setName((current) => (current === "" ? submittedName : current));
+      }
+      return error;
     });
   };
 
-  const toggleBreak = async (player: Player) => {
+  const updatePlayer = async (
+    player: Player,
+    changes: { name: string; gender: Gender; skillLevel: SkillLevel },
+  ): Promise<string | undefined> => {
+    const result = await validatePlayerName(changes.name, player.id);
+    if (!result.ok) {
+      return result.error;
+    }
     await db.players.update(player.id, {
-      isOnBreak: !player.isOnBreak,
-      waitStartedAt: getNow(),
+      name: result.name,
+      gender: changes.gender,
+      skillLevel: changes.skillLevel,
       updatedAt: getNow(),
+    });
+    return undefined;
+  };
+
+  const removePlayer = async (player: Player): Promise<string | undefined> => {
+    let error: string | undefined;
+    await db.transaction("rw", db.players, db.courts, async () => {
+      const allCourts = await db.courts.toArray();
+      const onCourt = allCourts.some((court) => court.slots.some((slot) => slot.playerId === player.id));
+      if (onCourt) {
+        error = `${player.name} is on a court. Take them off the court first.`;
+        return;
+      }
+      await db.players.delete(player.id);
+    });
+    return error;
+  };
+
+  const setPlayerStatus = async (player: Player, status: PlayerStatus) => {
+    const now = getNow();
+    const isActive = status !== "left";
+    const isOnBreak = status === "break";
+    const rejoiningQueue = isActive && !isOnBreak && (!player.isActive || player.isOnBreak);
+    await db.players.update(player.id, {
+      isActive,
+      isOnBreak,
+      ...(rejoiningQueue || isOnBreak ? { waitStartedAt: now } : {}),
+      updatedAt: now,
     });
   };
 
   const assignToCourt = async (playerId: string, courtId: string, position: number) => {
-    const court = courts.find((c) => c.id === courtId);
-    if (!court || court.isActive) {
-      return;
-    }
+    // Read and write inside one transaction so quick consecutive picks can't overwrite each other.
+    await db.transaction("rw", db.courts, async () => {
+      const allCourts = await db.courts.toArray();
+      const court = allCourts.find((c) => c.id === courtId);
+      if (!court || court.isActive) {
+        return;
+      }
+      const alreadyPlaced = allCourts.some((c) => c.slots.some((slot) => slot.playerId === playerId));
+      if (alreadyPlaced) {
+        return;
+      }
 
-    const updatedSlots = court.slots.map((slot) =>
-      slot.position === position ? { ...slot, playerId } : slot,
-    );
-    await db.courts.update(courtId, { slots: updatedSlots, updatedAt: getNow() });
+      const updatedSlots = court.slots.map((slot) =>
+        slot.position === position ? { ...slot, playerId } : slot,
+      );
+      await db.courts.update(courtId, { slots: updatedSlots, updatedAt: getNow() });
+    });
   };
 
   const clearSlot = async (courtId: string, position: number) => {
-    const court = courts.find((c) => c.id === courtId);
-    if (!court || court.isActive) {
-      return;
-    }
+    await db.transaction("rw", db.courts, async () => {
+      const court = await db.courts.get(courtId);
+      if (!court || court.isActive) {
+        return;
+      }
 
-    const updatedSlots = court.slots.map((slot) =>
-      slot.position === position ? { ...slot, playerId: undefined } : slot,
-    );
-    await db.courts.update(courtId, { slots: updatedSlots, updatedAt: getNow() });
+      const updatedSlots = court.slots.map((slot) =>
+        slot.position === position ? { ...slot, playerId: undefined } : slot,
+      );
+      await db.courts.update(courtId, { slots: updatedSlots, updatedAt: getNow() });
+    });
   };
 
   const startMatch = async (courtId: string): Promise<boolean> => {
@@ -408,9 +503,10 @@ export function useDeuceSession() {
     });
   };
 
-  const has10OrMore = players.filter((p) => p.isActive).length >= 10;
+  // "Active" means available to play right now, so players on a break are not counted.
+  const activePlayersCount = players.filter((p) => p.isActive && !p.isOnBreak).length;
+  const has10OrMore = activePlayersCount >= 10;
   const activeCourtsCount = courts.filter((c) => c.isActive).length;
-  const activePlayersCount = players.filter((p) => p.isActive).length;
   const startSession = async ({ clearPlayers = false }: { clearPlayers?: boolean } = {}) => {
     if (activeSession) {
       return;
@@ -645,6 +741,7 @@ export function useDeuceSession() {
     sessions,
     activeSession,
     players,
+    sortedPlayers,
     courts,
     sessionMatches,
     scopedSessionMatches,
@@ -655,8 +752,9 @@ export function useDeuceSession() {
     sortedCourts,
     playersOnCourt,
     addPlayer,
-    toggleActive,
-    toggleBreak,
+    updatePlayer,
+    removePlayer,
+    setPlayerStatus,
     assignToCourt,
     clearSlot,
     startMatch,
