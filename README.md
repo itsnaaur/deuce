@@ -106,7 +106,21 @@ Then check **Application → Service workers** and **Manifest** in your browser'
 | `npm run build` | Production build (webpack mode, so the PWA plugin runs) |
 | `npm run start` | Serve the production build |
 | `npm run lint` | Run ESLint |
+| `npm run typecheck` | Check types with TypeScript |
+| `npm test` | Run the automated tests once |
+| `npm run test:watch` | Re-run tests as you edit |
+| `npm run test:coverage` | Run tests with a coverage report |
 | `npm run clean` | Delete the `.next` folder |
+
+## Testing
+
+Tests use [Vitest](https://vitest.dev). They run in Node, with jsdom and an in-memory IndexedDB ([fake-indexeddb](https://github.com/dumbmatter/fakeIndexedDB)) where the app's data layer needs a browser.
+
+- `src/lib/*.test.ts` — queue ordering, the 30-minute override, team balancing, repeat-partner avoidance and auto-fill selection.
+- `src/hooks/use-deuce-session.test.ts` — the real data layer end to end: adding and validating players, statuses and the queue, courts and matches, scoring, court count changes, sessions, stats and reset.
+- `src/hooks/use-local-storage-flag.test.ts` — remembered UI settings such as the collapsed sidebar.
+
+GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs lint, typecheck, tests and a production build on Node 20.19 and 22 for every pull request and every push to `main`.
 
 ## Project structure
 
@@ -130,9 +144,10 @@ src/
     use-deuce-session.ts    # All reads and writes: players, courts, sessions, matches
   lib/
     db.ts                   # Dexie schema (database: deuce-db)
-    queue.ts                # Queue ordering and team balancing
+    queue.ts                # Queue ordering, team balancing, auto-fill selection
     skill.ts                # Skill values and power curve
     types.ts                # Shared types
+  test/                     # Test setup and helpers
 public/
   branding/                 # Logos used in the app
   icons/                    # App and home-screen icons
