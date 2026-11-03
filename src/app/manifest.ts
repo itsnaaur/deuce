@@ -11,25 +11,12 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#fafbff",
     theme_color: "#050b14",
     categories: ["sports", "utilities"],
+    // Generated from the Deuce mark by `npm run icons`.
     icons: [
-      {
-        src: "/icons/icon.svg",
-        type: "image/svg+xml",
-        sizes: "any",
-        purpose: "any",
-      },
-      {
-        src: "/icons/icon-192.png",
-        type: "image/png",
-        sizes: "192x192",
-        purpose: "maskable",
-      },
-      {
-        src: "/icons/deuce-mobile-logo-512.png",
-        type: "image/png",
-        sizes: "512x512",
-        purpose: "maskable",
-      },
+      { src: "/icons/icon-192.png", type: "image/png", sizes: "192x192", purpose: "any" },
+      { src: "/icons/icon-512.png", type: "image/png", sizes: "512x512", purpose: "any" },
+      { src: "/icons/icon-maskable-192.png", type: "image/png", sizes: "192x192", purpose: "maskable" },
+      { src: "/icons/icon-maskable-512.png", type: "image/png", sizes: "512x512", purpose: "maskable" },
     ],
   };
 }

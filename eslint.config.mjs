@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "public/sw.js",
     "public/workbox-*.js",
     "public/swe-worker-*.js",
+    // Test coverage report (npm run test:coverage)
+    "coverage/**",
   ]),
 ]);
 
