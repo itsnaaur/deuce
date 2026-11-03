@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { QueuePanel } from "@/components/queue/queue-panel";
 import {
   DEUCE_GENDERS,
+  MAX_COURTS,
   MAX_PLAYER_NAME_LENGTH,
   getPlayerStatus,
   useDeuceSession,
@@ -22,6 +23,7 @@ export function QueueView() {
   const [courtCountInput, setCourtCountInput] = useState("2");
   const [visibleRosterCount, setVisibleRosterCount] = useState(10);
   const [addError, setAddError] = useState<string>();
+  const [courtCountMessage, setCourtCountMessage] = useState<string>();
   const {
     name,
     setName,
@@ -69,10 +71,17 @@ export function QueueView() {
       setCourtCountInput(String(settings?.courtCount ?? 2));
       return;
     }
-    const normalized = Math.min(parsed, 99);
+    const normalized = Math.min(parsed, MAX_COURTS);
     setCourtCountInput(String(normalized));
-    void updateSettings({ courtCount: normalized });
-    void syncCourtsCount(normalized);
+    setCourtCountMessage(
+      parsed > MAX_COURTS ? `Deuce supports up to ${MAX_COURTS} courts.` : undefined,
+    );
+    void syncCourtsCount(normalized).then((result) => {
+      setCourtCountInput(String(result.count));
+      if (result.error) {
+        setCourtCountMessage(result.error);
+      }
+    });
   };
 
   return (
@@ -137,6 +146,11 @@ export function QueueView() {
               />
             </label>
           </div>
+          {courtCountMessage && (
+            <p role="alert" className="mt-2 text-sm font-medium text-amber-800">
+              {courtCountMessage}
+            </p>
+          )}
           <button
             type="button"
             disabled={!has10OrMore || Boolean(settings?.randomStartUsed)}
