@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { EndSessionModal } from "@/components/session/end-session-modal";
 import { StartSessionModal } from "@/components/session/start-session-modal";
 import { useDeuceSession } from "@/hooks/use-deuce-session";
 import { isAndroidDevice, isIOSLikeDevice, isStandaloneAppDisplay } from "@/lib/platform";
@@ -14,6 +15,7 @@ type BeforeInstallPromptEvent = Event & {
 
 export function HomeView() {
   const [showStartSessionPrompt, setShowStartSessionPrompt] = useState(false);
+  const [showEndSessionPrompt, setShowEndSessionPrompt] = useState(false);
   const [showInstallHelp, setShowInstallHelp] = useState(false);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
@@ -137,7 +139,7 @@ export function HomeView() {
               {activeSession ? activeSession.name : "No active session"}
             </span>
             {activeSession ? (
-              <button type="button" className="btn-court-end px-4 py-2 text-xs" onClick={() => void endSession()}>
+              <button type="button" className="btn-court-end px-4 py-2 text-xs" onClick={() => setShowEndSessionPrompt(true)}>
                 End session
               </button>
             ) : (
@@ -165,11 +167,19 @@ export function HomeView() {
           </h2>
           {nextUp.length === 0 ? (
             <p className="mt-3 rounded-2xl border border-dashed border-(--border) bg-(--surface) px-4 py-8 text-center text-sm text-(--text-muted)">
-              Queue is empty — add players in{" "}
-              <Link href="/queue" className="font-semibold text-(--accent-on-light) underline-offset-2 hover:underline">
-                The Roster
-              </Link>
-              .
+              {players.length === 0 ? (
+                <>
+                  Queue is empty — add players in{" "}
+                  <Link href="/queue" className="font-semibold text-(--accent-on-light) underline-offset-2 hover:underline">
+                    The Roster
+                  </Link>
+                  .
+                </>
+              ) : !activeSession ? (
+                "Start a session to open the queue."
+              ) : (
+                "Nobody is waiting — everyone available is on court."
+              )}
             </p>
           ) : (
             <ol className="mt-3 space-y-2">
@@ -289,6 +299,19 @@ export function HomeView() {
           </svg>
         </button>
       ) : null}
+      <EndSessionModal
+        open={showEndSessionPrompt && Boolean(activeSession)}
+        sessionName={activeSession?.name ?? "this session"}
+        liveCourtLabels={courts
+          .filter((court) => court.isActive)
+          .map((court) => court.label)
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))}
+        onClose={() => setShowEndSessionPrompt(false)}
+        onConfirm={() => {
+          setShowEndSessionPrompt(false);
+          void endSession();
+        }}
+      />
       <StartSessionModal
         open={showStartSessionPrompt}
         playerCount={players.length}

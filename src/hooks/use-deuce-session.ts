@@ -22,6 +22,10 @@ const RECREATIONAL_LEVELS: SkillLevel[] = ["Beginner", "Intermediate", "Advanced
 const COMPETITIVE_LEVELS: SkillLevel[] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"];
 
 export const MAX_PLAYER_NAME_LENGTH = 24;
+export const MAX_COURTS = 20;
+
+const getCourtNumber = (court: { id: string; label: string }) =>
+  Number.parseInt(court.id.replace("court-", ""), 10) || Number.parseInt(court.label.replace(/\D/g, ""), 10) || 0;
 
 export type PlayerStatus = "playing" | "break" | "left";
 
@@ -463,25 +467,62 @@ export function useDeuceSession() {
     });
   };
 
-  const syncCourtsCount = async (count: number) => {
-    const existing = await db.courts.toArray();
-    const currentCount = existing.length;
-    if (count === currentCount) {
-      return;
-    }
+  // Returns the number of courts actually configured, plus a message when some couldn't be removed.
+  const syncCourtsCount = async (count: number): Promise<{ count: number; error?: string }> => {
+    const target = Math.min(Math.max(1, Math.trunc(count)), MAX_COURTS);
+    let result: { count: number; error?: string } = { count: target };
 
-    if (count > currentCount) {
-      const toAdd = Array.from({ length: count - currentCount }, (_, idx) =>
-        createEmptyCourt(currentCount + idx + 1),
-      );
-      await db.courts.bulkPut(toAdd);
-    } else {
-      const removable = existing
-        .sort((a, b) => b.label.localeCompare(a.label))
-        .slice(0, currentCount - count)
-        .map((court) => court.id);
-      await db.courts.bulkDelete(removable);
-    }
+    await db.transaction("rw", db.courts, db.settings, async () => {
+      const existing = await db.courts.toArray();
+
+      if (target > existing.length) {
+        // Fill the lowest unused court numbers so labels stay 1..n even after earlier gaps.
+        const used = new Set(existing.map((court) => getCourtNumber(court)));
+        const toAdd = [];
+        for (let n = 1; toAdd.length < target - existing.length; n += 1) {
+          if (!used.has(n)) {
+            toAdd.push(createEmptyCourt(n));
+          }
+        }
+        await db.courts.bulkPut(toAdd);
+      } else if (target < existing.length) {
+        // Remove the highest-numbered courts first, but never one with a match in progress.
+        const byNumberDesc = [...existing].sort((a, b) => getCourtNumber(b) - getCourtNumber(a));
+        const removable = byNumberDesc.filter((court) => !court.isActive);
+        const toRemove = removable.slice(0, existing.length - target);
+        await db.courts.bulkDelete(toRemove.map((court) => court.id));
+
+        const remaining = existing.length - toRemove.length;
+        if (remaining > target) {
+          const live = byNumberDesc.filter((court) => court.isActive).map((court) => court.label);
+          result = {
+            count: remaining,
+            error: `${live.join(", ")} ${live.length === 1 ? "has a match" : "have matches"} in progress. End ${
+              live.length === 1 ? "it" : "them"
+            } before removing courts.`,
+          };
+        }
+      }
+
+      // Repair gaps left by older versions (e.g. "Court 1, Court 10") by moving idle courts down to
+      // the missing numbers, keeping any players already placed on them.
+      const after = await db.courts.toArray();
+      const usedAfter = new Set(after.map((court) => getCourtNumber(court)));
+      const missing = Array.from({ length: result.count }, (_, i) => i + 1).filter((n) => !usedAfter.has(n));
+      const outOfRange = after
+        .filter((court) => !court.isActive && getCourtNumber(court) > result.count)
+        .sort((a, b) => getCourtNumber(b) - getCourtNumber(a));
+      for (let i = 0; i < Math.min(missing.length, outOfRange.length); i += 1) {
+        const court = outOfRange[i];
+        await db.courts.delete(court.id);
+        await db.courts.put({ ...createEmptyCourt(missing[i]), slots: court.slots, updatedAt: getNow() });
+      }
+
+      const current = (await db.settings.get("default")) ?? DEFAULT_SETTINGS;
+      await db.settings.put({ ...current, courtCount: result.count, id: "default", updatedAt: getNow() });
+    });
+
+    return result;
   };
 
   const randomizeStartOrder = async () => {

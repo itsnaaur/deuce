@@ -8,11 +8,22 @@ import { QueueDrawer } from "@/components/queue/queue-drawer";
 import { LiveSidePanel } from "@/components/session/live-side-panel";
 import { StartSessionModal } from "@/components/session/start-session-modal";
 import { useDeuceSession } from "@/hooks/use-deuce-session";
-import { MAX_TEAM_POWER_GAP, getBestBalancedTeams, getPartnerKey, getWaitMinutes } from "@/lib/queue";
+import {
+  MAX_TEAM_POWER_GAP,
+  getBestBalancedTeams,
+  getRecentPairKeys,
+  getWaitMinutes,
+  pickAutoFillGroup,
+} from "@/lib/queue";
 import { getSkillPowerValue } from "@/lib/skill";
 import type { Court, Player } from "@/lib/types";
 
 const MAX_SCORE = 99;
+
+const listNames = (players: Player[]) => {
+  const names = players.map((player) => player.name);
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+};
 
 const parseScore = (value: string) => {
   if (!/^\d{1,2}$/.test(value.trim())) {
@@ -163,22 +174,8 @@ export function WarRoomView() {
 
   const courtTotal = Math.max(courts.length, 1);
 
-  // Each player's partner from their most recent game this session, so auto-fill can avoid repeats.
-  const recentPartnerKeys = useMemo(() => {
-    const seen = new Set<string>();
-    const keys = new Set<string>();
-    for (const match of scopedSessionMatches) {
-      for (const team of [match.teamAPlayerIds, match.teamBPlayerIds]) {
-        const [a, b] = team;
-        if (!seen.has(a) || !seen.has(b)) {
-          keys.add(getPartnerKey(a, b));
-        }
-        seen.add(a);
-        seen.add(b);
-      }
-    }
-    return keys;
-  }, [scopedSessionMatches]);
+  // Partners and matchmates from each player's most recent game, so auto-fill can mix things up.
+  const recentPairs = useMemo(() => getRecentPairKeys(scopedSessionMatches), [scopedSessionMatches]);
 
   const openEndMatch = (court: Court) => {
     const nameAt = (position: number) => {
@@ -253,23 +250,38 @@ export function WarRoomView() {
         return;
       }
 
-      const fills = waitingPlayers.slice(0, openPositions.length);
       const isFullFill = openPositions.length === court.slots.length;
+      let fills: Player[];
       let picks: [Player, Player, Player, Player];
       let gap: number;
-      let avoidedRepeatPartners = false;
+      const reasonParts: string[] = [];
 
       if (isFullFill) {
-        const topPriority = fills as [Player, Player, Player, Player];
-        const balanced = getBestBalancedTeams(topPriority, recentPartnerKeys);
-        const plainBalanced = getBestBalancedTeams(topPriority);
-        const teamA = balanced.pairing[0];
-        const teamB = balanced.pairing[1];
-        picks = [teamA[0], teamA[1], teamB[0], teamB[1]];
-        gap = balanced.gap;
-        avoidedRepeatPartners = plainBalanced.repeatedPartners > balanced.repeatedPartners;
+        const group = pickAutoFillGroup(waitingPlayers, recentPairs);
+        if (!group) {
+          return;
+        }
+        fills = group.players;
+        picks = group.players;
+        gap = group.gap;
+        const nextFour = waitingPlayers.slice(0, 4);
+        const plain = getBestBalancedTeams(nextFour as [Player, Player, Player, Player]);
+        if (group.skipped.length > 0) {
+          const joined = group.players.filter((player) => !nextFour.includes(player));
+          reasonParts.push(
+            `${listNames(joined)} ${joined.length === 1 ? "joins" : "join"} instead of ${listNames(group.skipped)} for ${
+              group.gap < plain.gap ? "better-balanced teams" : "a fresh mix of players"
+            }. ${listNames(group.skipped)} ${group.skipped.length === 1 ? "is" : "are"} first in line next.`,
+          );
+        } else {
+          reasonParts.push("The next four in the queue.");
+        }
+        if (group.repeatedPartners === 0 && plain.repeatedPartners > 0 && group.skipped.length === 0) {
+          reasonParts.push("Partners were mixed up so nobody repeats their last partner.");
+        }
       } else {
         // Keep the host's hand-placed players where they are and fill the open spots in queue order.
+        fills = waitingPlayers.slice(0, openPositions.length);
         const queue = [...fills];
         const byPosition = court.slots.map((slot) =>
           slot.playerId ? stablePlayerById.get(slot.playerId) : queue.shift(),
@@ -282,17 +294,21 @@ export function WarRoomView() {
         const teamPower = (a: Player, b: Player) =>
           getSkillPowerValue(a.skillLevel) + getSkillPowerValue(b.skillLevel);
         gap = Math.abs(teamPower(picks[0], picks[1]) - teamPower(picks[2], picks[3]));
+        reasonParts.push(
+          `Fills ${openPositions.length} open ${openPositions.length === 1 ? "spot" : "spots"} from the front of the queue.`,
+        );
       }
 
-      const minGames = Math.min(...fills.map((p) => p.gamesPlayed));
-      const longWaiters = fills.filter((p) => getWaitMinutes(p.waitStartedAt) >= 20);
+      // Badges only mean something when they set a player apart from the rest of the queue.
+      const fewestGames = Math.min(...waitingPlayers.map((p) => p.gamesPlayed));
+      const mostGames = Math.max(...waitingPlayers.map((p) => p.gamesPlayed));
       const badgesByPlayerId: Record<string, SuggestionBadge[]> = {};
       for (const player of fills) {
         const badges: SuggestionBadge[] = [];
-        if (longWaiters.some((p) => p.id === player.id)) {
+        if (getWaitMinutes(player.waitStartedAt) >= 20) {
           badges.push("Longest Wait");
         }
-        if (player.gamesPlayed === minGames) {
+        if (fewestGames < mostGames && player.gamesPlayed === fewestGames) {
           badges.push("Fresh");
         }
         badgesByPlayerId[player.id] = badges;
@@ -301,17 +317,16 @@ export function WarRoomView() {
       const fairnessScore = Math.max(0, Math.min(100, Math.round((1 - gap / MAX_TEAM_POWER_GAP) * 100)));
       const prioritizesWaitTime = gap >= 8;
 
-      const longestWaiters = [...fills].sort((a, b) => a.waitStartedAt - b.waitStartedAt).slice(0, 2);
-      const waitText = longestWaiters
-        .map((player) => `${player.name} (${getWaitMinutes(player.waitStartedAt)} min)`)
-        .join(" and ");
-      const reasonParts = [
-        isFullFill
-          ? `Next up in the queue. Longest waiting: ${waitText}.`
-          : `Fills ${openPositions.length} open ${openPositions.length === 1 ? "spot" : "spots"} from the front of the queue.`,
-      ];
-      if (avoidedRepeatPartners) {
-        reasonParts.push("Partners were mixed up so nobody repeats their last partner.");
+      const waitedAMinute = [...fills]
+        .filter((player) => getWaitMinutes(player.waitStartedAt) >= 1)
+        .sort((a, b) => a.waitStartedAt - b.waitStartedAt)
+        .slice(0, 2);
+      if (waitedAMinute.length > 0) {
+        reasonParts.push(
+          `Longest waiting: ${waitedAMinute
+            .map((player) => `${player.name} (${getWaitMinutes(player.waitStartedAt)} min)`)
+            .join(" and ")}.`,
+        );
       }
 
       setSuggestion({
@@ -627,7 +642,36 @@ export function WarRoomView() {
       ) : null}
       {endMatchTarget ? (
         <div className="fixed inset-0 z-70 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-(--border) bg-(--surface) p-5 shadow-(--shadow-lift)">
+          <form
+            className="w-full max-w-md rounded-2xl border border-(--border) bg-(--surface) p-5 shadow-(--shadow-lift)"
+            onSubmit={async (event) => {
+              // A form so pressing Enter in either score box saves.
+              event.preventDefault();
+              if (isEndingMatch) {
+                return;
+              }
+              const parsedA = parseScore(scoreA);
+              const parsedB = parseScore(scoreB);
+              if (parsedA === undefined || parsedB === undefined) {
+                setEndMatchError(`Enter a score from 0 to ${MAX_SCORE} for both teams.`);
+                return;
+              }
+              if (parsedA === parsedB && !confirmDraw) {
+                setConfirmDraw(true);
+                return;
+              }
+              setIsEndingMatch(true);
+              const saved = await endMatch(endMatchTarget.courtId, parsedA, parsedB);
+              if (!saved) {
+                setEndMatchError("Unable to end this match right now. Please retry.");
+                setIsEndingMatch(false);
+                return;
+              }
+              setEndMatchError(null);
+              setIsEndingMatch(false);
+              setEndMatchTarget(null);
+            }}
+          >
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-(--text-muted)">
               End match
             </p>
@@ -695,34 +739,9 @@ export function WarRoomView() {
                 Cancel
               </button>
               <button
-                type="button"
+                type="submit"
                 className="btn-court-end flex-1 px-4 py-2.5 text-sm"
                 disabled={isEndingMatch}
-                onClick={async () => {
-                  if (isEndingMatch) {
-                    return;
-                  }
-                  const parsedA = parseScore(scoreA);
-                  const parsedB = parseScore(scoreB);
-                  if (parsedA === undefined || parsedB === undefined) {
-                    setEndMatchError(`Enter a score from 0 to ${MAX_SCORE} for both teams.`);
-                    return;
-                  }
-                  if (parsedA === parsedB && !confirmDraw) {
-                    setConfirmDraw(true);
-                    return;
-                  }
-                  setIsEndingMatch(true);
-                  const saved = await endMatch(endMatchTarget.courtId, parsedA, parsedB);
-                  if (!saved) {
-                    setEndMatchError("Unable to end this match right now. Please retry.");
-                    setIsEndingMatch(false);
-                    return;
-                  }
-                  setEndMatchError(null);
-                  setIsEndingMatch(false);
-                  setEndMatchTarget(null);
-                }}
               >
                 {isEndingMatch ? "Saving..." : confirmDraw ? "Save as draw" : "Save result"}
               </button>
@@ -730,7 +749,7 @@ export function WarRoomView() {
             {endMatchError ? (
               <p className="mt-3 text-center text-xs font-medium text-amber-700">{endMatchError}</p>
             ) : null}
-          </div>
+          </form>
         </div>
       ) : null}
       <StartSessionModal
